@@ -1,162 +1,169 @@
 from ultralytics import YOLO
 import torch
-import numpy as np
 from torchvision import transforms
 import cv2
-import matplotlib.pyplot as plt
+from typing import Tuple, List
+from dataclasses import dataclass
+from collections import OrderedDict
 
-# Creiamo una classe per gestire il salvataggio delle feature maps
-class FeatureExtractor():
-    def __init__(self):
-        self.features = None
+
+@dataclass
+class LayerConfig:
+    """
+    Configuration for a layer to extract features from
     
-    def hook(self, module, input, output):
-        # Questa funzione verrà chiamata ogni volta che i dati attraversano il layer
-        self.features = output.detach()  # Salviamo l'output del layer
+    Attributes:
+        index: Index of the layer in YOLO model
+        name: Human readable name for the layer
+    """
+    index: int
+    name: str
 
-# Creiamo una funzione per registrare il hook sul layer desiderato
-def register_feature_extractor(model):
-    # Inizializziamo il nostro estrattore
-    feature_extractor = FeatureExtractor()
+class MultiFeatureExtractor:
+    """
+    Handles extraction of feature maps from multiple YOLO model layers
+    """
+    def __init__(self, layer_configs: List[LayerConfig]):
+        """
+        Initialize feature extractor with configurations for target layers
+        
+        Args:
+            layer_configs: List of LayerConfig objects specifying which layers to extract from
+        """
+        self.layer_configs = layer_configs
+        self.features = OrderedDict()  # Using OrderedDict to maintain layer order
+        
+    def hook_fn(self, layer_name: str):
+        """
+        Creates a hook function for a specific layer
+        
+        Args:
+            layer_name: Name of the layer for identifying features
+        
+        Returns:
+            Hook function that stores features in self.features
+        """
+        def hook(module, input, output):
+            self.features[layer_name] = output.detach()
+        return hook
+
+    def register_hooks(self, model: YOLO) -> List[torch.utils.hooks.RemovableHandle]:
+        """
+        Register hooks on all specified layers
+        
+        Args:
+            model: YOLO model instance
+        
+        Returns:
+            List of hook handles that can be used to remove hooks later
+        """
+        hooks = []
+        for config in self.layer_configs:
+            layer = model.model.model[config.index]
+            hook = layer.register_forward_hook(self.hook_fn(config.name))
+            hooks.append(hook)
+        return hooks
+
+def extract_multiple_features(
+    model: YOLO,
+    image: torch.Tensor,
+    layer_configs: List[LayerConfig]
+) -> OrderedDict:
+    """
+    Extract features from multiple specified layers
     
-
-    # In YOLO, dobbiamo accedere prima al modello base e poi al layer specifico
-    # Il modello è strutturato come: model.model.model[2]
-    target_layer = model.model.model[2]
-
-    # Registriamo l'hook sul layer C3k2
-    target_layer.register_forward_hook(feature_extractor.hook)
+    Args:
+        model: YOLO model instance
+        image: Input image tensor
+        layer_configs: List of layer configurations
     
-    return feature_extractor
-
-
-# Esempio di utilizzo
-def extract_features(model, image):
-    # Registriamo il hook
-    feature_extractor = register_feature_extractor(model)
+    Returns:
+        OrderedDict containing feature maps from each specified layer
+    """
+    extractor = MultiFeatureExtractor(layer_configs)
+    hooks = extractor.register_hooks(model)
     
-    # Facciamo una forward pass
-    with torch.no_grad():  # Non abbiamo bisogno dei gradienti
-        model(image)
+    try:
+        with torch.no_grad():
+            model(image)
+    finally:
+        # Always remove hooks to prevent memory leaks
+        for hook in hooks:
+            hook.remove()
     
-    # Ora feature_extractor.features contiene le feature maps del layer C3k2
-    return feature_extractor.features
+    return extractor.features
 
-def load_image_for_yolo(image_path, input_size=(640, 640)):
-    # Leggiamo l'immagine usando OpenCV
-    # cv2.IMREAD_COLOR legge l'immagine in formato BGR
+def load_image_for_yolo(image_path: str, target_size: Tuple[int, int] = (640, 640)) -> torch.Tensor:
+    """
+    Load and preprocess image for YOLO model
+    Args:
+        image_path: Path to the input image
+        target_size: Target size for the image (width, height)
+    Returns:
+        Preprocessed image tensor
+    """
     image = cv2.imread(image_path, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError(f"Could not read image: {image_path}")
     
-    # Convertiamo da BGR (formato OpenCV) a RGB (formato atteso da YOLO)
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    height, width = image.shape[:2]
     
-    # Creiamo le trasformazioni necessarie per preprocessare l'immagine
-    transform = transforms.Compose([
-        transforms.ToTensor(),  # Converte l'immagine in un tensor e normalizza da [0,255] a [0,1]
-        transforms.Resize(input_size),  # Ridimensiona l'immagine alle dimensioni richieste
-    ])
+    if width < target_size[0] or height < target_size[1]:
+        raise ValueError(f"Image too small. Required size: {target_size}, "
+                        f"Current size: {width}x{height}")
     
-    # Applichiamo le trasformazioni
-    image_tensor = transform(image)
+    # Calculate center crop coordinates
+    start_x = (width - target_size[0]) // 2
+    start_y = (height - target_size[1]) // 2
     
-    # Aggiungiamo la dimensione del batch (YOLO si aspetta input in formato BCHW)
+    # Extract center crop
+    center_crop = image[start_y:start_y + target_size[1], 
+                       start_x:start_x + target_size[0]]
+    
+    # Convert to tensor
+    transform = transforms.Compose([transforms.ToTensor()])
+    image_tensor = transform(center_crop)
+    
+    # To save image (using PIL)
+    from torchvision.transforms import ToPILImage
+    pil_image = ToPILImage()(image_tensor)
+    pil_image.save('example_center_crop_640x640.jpeg')
+
+    # Add batch dimension
     image_tensor = image_tensor.unsqueeze(0)
     
-    # Se hai una GPU disponibile, sposta il tensor sulla GPU
+    # Move to GPU if available
     if torch.cuda.is_available():
         image_tensor = image_tensor.cuda()
     
     return image_tensor
 
-# Esempio di utilizzo
-def process_image(model, image_path="example.jpeg"):
-    # Carichiamo l'immagine
-    image_tensor = load_image_for_yolo(image_path=image_path)
+def process_image_multiple_layers(
+    model: YOLO,
+    image_path: str,
+    layer_configs: List[LayerConfig]
+) -> OrderedDict:
+    """
+    Process an image and extract features from multiple layers
     
-    # Facciamo una forward pass attraverso il modello
-    with torch.no_grad():  # Disabilitiamo il calcolo dei gradienti per risparmiare memoria
-        features = extract_features(model, image_tensor)
+    Args:
+        model: YOLO model instance
+        image_path: Path to input image
+        layer_configs: List of layer configurations
     
-    print(f"Dimensione dell'immagine in input: {image_tensor.shape}")
-    print(f"Dimensione delle feature maps: {features.shape}")
+    Returns:
+        OrderedDict containing feature maps from each layer
+    """
+    # Load and preprocess image
+    image_tensor = load_image_for_yolo(image_path)
+    
+    # Extract features
+    features = extract_multiple_features(model, image_tensor, layer_configs)
+    
+    # Print shapes for verification
+    print(f"Input image shape: {image_tensor.shape}")
+    for name, feature in features.items():
+        print(f"Feature maps shape for {name}: {feature.shape}")
     
     return features
-
-def visualize_feature_maps(features, num_features=16, figsize=(60, 20), output_path='feature_maps.png'):
-    """
-    Visualizza le feature maps e salva il risultato su file
-    """
-    # Spostiamo il tensor sulla CPU e lo convertiamo in numpy
-    features = features.cpu().numpy()
-    
-    # Creiamo una figura con 3 subplot
-    fig = plt.figure(figsize=figsize)
-    
-    # 1. Media di tutti i canali
-    ax1 = fig.add_subplot(131)
-    mean_activation = np.mean(features[0], axis=0)
-    im1 = ax1.imshow(mean_activation, cmap='viridis')
-    ax1.set_title('Media di tutti i canali')
-    plt.colorbar(im1, ax=ax1)
-    
-    # 2. Grid delle prime n feature maps
-    ax2 = fig.add_subplot(132)
-    grid_size = int(np.ceil(np.sqrt(num_features)))
-    grid = np.zeros((grid_size * features.shape[2], grid_size * features.shape[3]))
-    
-    for idx in range(min(num_features, features.shape[1])):
-        i = idx // grid_size
-        j = idx % grid_size
-        grid[i*features.shape[2]:(i+1)*features.shape[2], 
-             j*features.shape[3]:(j+1)*features.shape[3]] = features[0, idx]
-    
-    im2 = ax2.imshow(grid, cmap='viridis')
-    ax2.set_title(f'Prime {num_features} feature maps')
-    plt.colorbar(im2, ax=ax2)
-    
-    # 3. Mappa di attivazione massima
-    ax3 = fig.add_subplot(133)
-    max_activation = np.max(features[0], axis=0)
-    im3 = ax3.imshow(max_activation, cmap='viridis')
-    ax3.set_title('Attivazione massima')
-    plt.colorbar(im3, ax=ax3)
-    
-    plt.tight_layout()
-    
-    # Salviamo la figura invece di mostrarla
-    plt.savefig(output_path)
-    plt.close()
-    
-    # Creiamo e salviamo anche l'istogramma
-    plt.figure(figsize=(10, 5))
-    plt.hist(features[0].flatten(), bins=50)
-    plt.title('Distribuzione delle attivazioni')
-    plt.xlabel('Valore di attivazione')
-    plt.ylabel('Frequenza')
-    plt.savefig('activation_distribution.png')
-    plt.close()
-
-def analyze_features(features):
-    print(f"Statistiche delle feature maps:")
-    print(f"- Shape: {features.shape}")
-    print(f"- Valore minimo: {features.min():.4f}")
-    print(f"- Valore massimo: {features.max():.4f}")
-    print(f"- Media: {features.mean():.4f}")
-    print(f"- Deviazione standard: {features.std():.4f}")
-    
-    # Visualizziamo e salviamo le feature maps
-    visualize_feature_maps(features, output_path='feature_maps.png')
-    print("\nLe visualizzazioni sono state salvate come 'feature_maps.png' e 'activation_distribution.png'")
-
-
-if __name__ == "__main__":
-
-    output_dir = ''
-
-    model = YOLO("yolo11x.pt")
-
-    # Estraiamo le features dal layer
-    features_2_c3k2 = process_image(model=model, image_path="example.jpeg")
-
-    # Chiamata alla funzione con le tue feature maps
-    visualize_feature_maps(features_2_c3k2, output_path=output_dir + 'feature_maps.png')

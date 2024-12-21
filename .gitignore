@@ -1,2 +1,4 @@
 yolo*.pt
-*.png
+/*.png
+output/
+__pycache__/
