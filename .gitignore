@@ -2,3 +2,5 @@ yolo*.pt
 /*.png
 output/
 __pycache__/
+extracted_patches/
+videos/
