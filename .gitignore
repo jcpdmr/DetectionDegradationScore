@@ -3,4 +3,5 @@ yolo*.pt
 output/
 __pycache__/
 extracted_patches/
+prediction_results
 videos/
