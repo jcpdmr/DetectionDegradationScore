@@ -6,21 +6,40 @@ import shutil
 import cv2
 import numpy as np
 
-def clear_output_folder():
+def create_directory_structure():
     """
-    Ask user if they want to clear the output folder
+    Create the directory structure for organizing different types of patches
+    """
+    base_dir = 'patches'
+    subdirs = ['extracted', 'compressed', 'distorted']
+
+    # Create base directory if it doesn't exist
+    if not os.path.exists(base_dir):
+        os.makedirs(base_dir)
+
+    # Create subdirectories
+    for subdir in subdirs:
+        path = os.path.join(base_dir, subdir)
+        os.makedirs(path, exist_ok=True)
+
+def clear_output_folders(clear=True):
+    """
+    Ask user if they want to clear the output folders
     Returns:
-        bool: True if folder should be cleared, False otherwise
+        bool: True if folders should be cleared, False otherwise
     """
-    while True:
-        response = input("Do you want to clear the 'extracted_patches' folder? (yes/no): ").lower()
-        if response in ['yes', 'y']:
-            if os.path.exists('extracted_patches'):
-                shutil.rmtree('extracted_patches')
-            return True
-        elif response in ['no', 'n']:
-            return False
-        print("Please enter 'yes' or 'no'")
+    if clear:
+        if os.path.exists('patches'):
+                shutil.rmtree('patches')
+    # while True:
+    #     response = input("Do you want to clear all output folders? (yes/no): ").lower()
+    #     if response in ['yes', 'y']:
+    #         if os.path.exists('patches'):
+    #             shutil.rmtree('patches')
+    #         return True
+    #     elif response in ['no', 'n']:
+    #         return False
+    #     print("Please enter 'yes' or 'no'")
 
 def get_video_info(video_path):
     """
@@ -112,7 +131,7 @@ def extract_patches(video_path, n_patches=50, patch_size=640):
         timestamp = random.uniform(0, duration)
         
         # Extract original patch
-        original_filename = f'extracted_patches/{video_name}_patch_{i}.jpg'
+        original_filename = f'patches/extracted/{video_name}_patch_{i}.jpg'
         cmd = [
             'ffmpeg', '-ss', str(timestamp),
             '-i', video_path,
@@ -123,21 +142,21 @@ def extract_patches(video_path, n_patches=50, patch_size=640):
         subprocess.run(cmd)
 
         # Create compression artifacts version
-        compressed_filename = f'extracted_patches/{video_name}_patch_{i}_compressed.jpg'
+        compressed_filename = f'patches/compressed/{video_name}_patch_{i}.jpg'
         apply_compression_artifacts(original_filename, compressed_filename)
 
         # Create LPIPS-style distorted version
         distorted = apply_lpips_style_distortions(original_filename)
-        distorted_filename = f'extracted_patches/{video_name}_patch_{i}_distorted.jpg'
+        distorted_filename = f'patches/distorted/{video_name}_patch_{i}.jpg'
         cv2.imwrite(distorted_filename, distorted)
 
         print(f'Extracted patch {i} from position ({x},{y}) at time {timestamp:.2f}s')
 
 
 if __name__ == '__main__':
-    # Check if user wants to clear output folder and create it if needed
-    clear_output_folder()
-    os.makedirs('extracted_patches', exist_ok=True)
+    # Check if user wants to clear output folders and create them if needed
+    clear_output_folders(clear=True)
+    create_directory_structure()
 
     # Process all videos in the folder
     video_folder = 'videos/'
