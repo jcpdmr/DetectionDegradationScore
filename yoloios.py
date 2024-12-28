@@ -1,8 +1,6 @@
 from ultralytics import YOLO
 import torch
 import torch.nn as nn
-from torchvision import transforms
-import cv2
 from typing import Tuple, List
 from dataclasses import dataclass
 from collections import OrderedDict
@@ -68,15 +66,15 @@ class MultiFeatureExtractor:
             hooks.append(hook)
         return hooks
 
-def extract_multiple_features(
+def extract_multiple_features_and_predictions(
     model: YOLO,
     images: torch.Tensor,
     layer_configs: List[LayerConfig],
     batch_size: int = 32
-) -> OrderedDict:
+) -> Tuple[OrderedDict, List]:
     """
-    Extract features from multiple specified layers
-    Supports batch processing with optional batch size control
+    Extract both feature maps and predictions from YOLO model
+    Supports batch processing with memory-efficient batch handling
     
     Args:
         model: YOLO model instance
@@ -85,25 +83,30 @@ def extract_multiple_features(
         batch_size: Maximum batch size to process at once to manage memory
     
     Returns:
-        OrderedDict containing batched feature maps from each specified layer
+        Tuple containing:
+        - OrderedDict with batched feature maps from each layer
+        - List of model predictions for each batch
     """
     num_images = images.size(0)
     extractor = MultiFeatureExtractor(layer_configs)
     hooks = extractor.register_hooks(model)
+    all_predictions = []
     
     try:
         with torch.no_grad():
-            # Process in batches if number of images exceeds batch_size
+            # Handle large batches by processing in chunks
             if num_images > batch_size:
                 all_features = None
+                
                 for i in range(0, num_images, batch_size):
                     end_idx = min(i + batch_size, num_images)
                     batch = images[i:end_idx]
                     
-                    # Forward pass for current batch
-                    model(batch)
+                    # Forward pass to get both features and predictions
+                    predictions = model(batch)
+                    all_predictions.extend(predictions)
                     
-                    # For first batch, initialize all_features
+                    # Initialize storage for features on first batch
                     if all_features is None:
                         all_features = OrderedDict({
                             name: torch.empty(
@@ -118,93 +121,23 @@ def extract_multiple_features(
                     for name, feature in extractor.features.items():
                         all_features[name][i:end_idx] = feature
                 
-                return all_features
+                return all_features, all_predictions
             else:
-                # If batch size is small enough, process all at once
-                model(images)
-                return extractor.features
+                # For small batches, process all at once
+                predictions = model(images)
+                return extractor.features, predictions
     finally:
-        # Clean up hooks
+        # Ensure hooks are always removed
         for hook in hooks:
             hook.remove()
 
-def load_image_for_yolo(image_path: str, target_size: Tuple[int, int] = (640, 640)) -> torch.Tensor:
-    """
-    Load and preprocess image for YOLO model
-    Args:
-        image_path: Path to the input image
-        target_size: Target size for the image (width, height)
-    Returns:
-        Preprocessed image tensor
-    """
-    image = cv2.imread(image_path, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError(f"Could not read image: {image_path}")
-    
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    height, width = image.shape[:2]
-    
-    if width < target_size[0] or height < target_size[1]:
-        raise ValueError(f"Image too small. Required size: {target_size}, "
-                        f"Current size: {width}x{height}")
-    
-    # Calculate center crop coordinates
-    start_x = (width - target_size[0]) // 2
-    start_y = (height - target_size[1]) // 2
-    
-    # Extract center crop
-    center_crop = image[start_y:start_y + target_size[1], 
-                       start_x:start_x + target_size[0]]
-    
-    # Convert to tensor
-    transform = transforms.Compose([transforms.ToTensor()])
-    image_tensor = transform(center_crop)
-
-    # Add batch dimension
-    image_tensor = image_tensor.unsqueeze(0)
-    
-    # Move to GPU if available
-    if torch.cuda.is_available():
-        image_tensor = image_tensor.cuda()
-    
-    return image_tensor
-
-def process_image_multiple_layers(
-    model: YOLO,
-    image_path: str,
-    layer_configs: List[LayerConfig]
-) -> OrderedDict:
-    """
-    Process an image and extract features from multiple layers
-    
-    Args:
-        model: YOLO model instance
-        image_path: Path to input image
-        layer_configs: List of layer configurations
-    
-    Returns:
-        OrderedDict containing feature maps from each layer
-    """
-    # Load and preprocess image
-    image_tensor = load_image_for_yolo(image_path)
-    
-    # Extract features
-    features = extract_multiple_features(model, image_tensor, layer_configs)
-    
-    # Print shapes for verification
-    print(f"Input image shape: {image_tensor.shape}")
-    for name, feature in features.items():
-        print(f"Feature maps shape for {name}: {feature.shape}")
-    
-    return features
-
-class YOLOPerceptualLoss(nn.Module):
+class YOLOSimilarity(nn.Module):
     """
     Computes perceptual distance between feature maps extracted from two images using YOLO layers.
     Implements a custom loss similar to LPIPS (Learned Perceptual Image Patch Similarity).
     """
     def __init__(self):
-        super(YOLOPerceptualLoss, self).__init__()
+        super(YOLOSimilarity, self).__init__()
         
         # Initialize 1x1 convolutional layers for channel weighting
         # These reduce the channel dimension to 1 while learning weights

@@ -61,7 +61,7 @@ def get_video_info(video_path):
     duration = float(info['format']['duration'])
     return width, height, duration
 
-def apply_compression_artifacts(input_path, output_path, quality=20):
+def apply_compression_artifacts(input_path, output_path, quality=30):
     """
     Apply compression artifacts using FFmpeg with a low quality setting
     Args:
@@ -165,4 +165,4 @@ if __name__ == '__main__':
     for video_name in video_files:
         print(f'Processing video: {video_name}')
         video_path = os.path.join(video_folder, video_name)
-        extract_patches(video_path, n_patches=20)
+        extract_patches(video_path, n_patches=64)

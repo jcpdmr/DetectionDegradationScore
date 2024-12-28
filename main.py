@@ -1,5 +1,5 @@
 from ultralytics import YOLO
-from yoloios import process_image_multiple_layers, LayerConfig, YOLOPerceptualLoss
+from yoloios import process_image_multiple_layers, LayerConfig, YOLOSimilarity
 # from utils import analyze_features
 import torch
 
@@ -15,7 +15,7 @@ def main():
     
     # Load models and move them to GPU
     yolo = YOLO('yolo11m.pt')
-    yoloios = YOLOPerceptualLoss()
+    yoloios = YOLOSimilarity()
     if torch.cuda.is_available():
         yoloios = yoloios.cuda()
         yolo = yolo.cuda()
