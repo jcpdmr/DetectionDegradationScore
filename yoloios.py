@@ -23,6 +23,7 @@ class LayerConfig:
 class MultiFeatureExtractor:
     """
     Handles extraction of feature maps from multiple YOLO model layers
+    Supports batch processing
     """
     def __init__(self, layer_configs: List[LayerConfig]):
         """
@@ -32,11 +33,12 @@ class MultiFeatureExtractor:
             layer_configs: List of LayerConfig objects specifying which layers to extract from
         """
         self.layer_configs = layer_configs
-        self.features = OrderedDict()  # Using OrderedDict to maintain layer order
+        self.features = OrderedDict()
         
     def hook_fn(self, layer_name: str):
         """
         Creates a hook function for a specific layer
+        Handles batched inputs
         
         Args:
             layer_name: Name of the layer for identifying features
@@ -45,7 +47,8 @@ class MultiFeatureExtractor:
             Hook function that stores features in self.features
         """
         def hook(module, input, output):
-            self.features[layer_name] = output.detach()
+            # Clone and detach to prevent memory leaks and ensure proper batch handling
+            self.features[layer_name] = output.clone().detach()
         return hook
 
     def register_hooks(self, model: YOLO) -> List[torch.utils.hooks.RemovableHandle]:
@@ -67,32 +70,63 @@ class MultiFeatureExtractor:
 
 def extract_multiple_features(
     model: YOLO,
-    image: torch.Tensor,
-    layer_configs: List[LayerConfig]
+    images: torch.Tensor,
+    layer_configs: List[LayerConfig],
+    batch_size: int = 32
 ) -> OrderedDict:
     """
     Extract features from multiple specified layers
+    Supports batch processing with optional batch size control
     
     Args:
         model: YOLO model instance
-        image: Input image tensor
+        images: Input image tensors of shape [batch_size, channels, height, width]
         layer_configs: List of layer configurations
+        batch_size: Maximum batch size to process at once to manage memory
     
     Returns:
-        OrderedDict containing feature maps from each specified layer
+        OrderedDict containing batched feature maps from each specified layer
     """
+    num_images = images.size(0)
     extractor = MultiFeatureExtractor(layer_configs)
     hooks = extractor.register_hooks(model)
     
     try:
         with torch.no_grad():
-            model(image)
+            # Process in batches if number of images exceeds batch_size
+            if num_images > batch_size:
+                all_features = None
+                for i in range(0, num_images, batch_size):
+                    end_idx = min(i + batch_size, num_images)
+                    batch = images[i:end_idx]
+                    
+                    # Forward pass for current batch
+                    model(batch)
+                    
+                    # For first batch, initialize all_features
+                    if all_features is None:
+                        all_features = OrderedDict({
+                            name: torch.empty(
+                                (num_images,) + feature.shape[1:],
+                                dtype=feature.dtype,
+                                device=feature.device
+                            )
+                            for name, feature in extractor.features.items()
+                        })
+                    
+                    # Store features for current batch
+                    for name, feature in extractor.features.items():
+                        all_features[name][i:end_idx] = feature
+                
+                return all_features
+            else:
+                # If batch size is small enough, process all at once
+                model(images)
+                return extractor.features
     finally:
-        # Always remove hooks to prevent memory leaks
+        # Clean up hooks
         for hook in hooks:
             hook.remove()
-    
-    return extractor.features
 
 def load_image_for_yolo(image_path: str, target_size: Tuple[int, int] = (640, 640)) -> torch.Tensor:
     """

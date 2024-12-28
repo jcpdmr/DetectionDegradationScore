@@ -1,17 +1,10 @@
 from ultralytics import YOLO
 from yoloios import process_image_multiple_layers, LayerConfig, YOLOPerceptualLoss
 # from utils import analyze_features
-import os
 import torch
 
 
-    
-
 def main():
-    output_dir = 'output'
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
 
     # Define layers to extract features from
     layer_configs = [
@@ -47,6 +40,9 @@ def main():
     #     # Check if tensor is on CUDA
     #     print(f"Layer {name} on CUDA: {tensor.is_cuda}")
 
+    # output_dir = 'feature_maps_output'
+    # if not os.path.exists(output_dir):
+    #     os.makedirs(output_dir)
     # # Analyze and visualize features
     # for layer_name, feature_tensor in features.items():
     #     analyze_features(features=feature_tensor, name=layer_name, output_path=output_dir)
