@@ -25,7 +25,7 @@ class PatchesDataset(Dataset):
         self.compressed_path = os.path.join(base_path, "compressed")
         
         # Get all image names
-        all_images = [f for f in os.listdir(self.gt_path) if f.endswith('.jpg')]
+        all_images = [f for f in os.listdir(self.gt_path) if f.endswith('.png')]
         
         # Create reproducible random split
         random.seed(seed)
