@@ -46,14 +46,19 @@ class PatchesDataset(Dataset):
         return len(self.image_names)
     
     def __getitem__(self, idx):
+    # Get original filename without extension
         img_name = self.image_names[idx]
-        gt_img = load_image_for_yolo(os.path.join(self.gt_path, img_name))
-        
+        base_name = os.path.splitext(img_name)[0]
+        # Load ground truth (PNG)
+        gt_img = load_image_for_yolo(os.path.join(self.gt_path, f"{base_name}.png"))
+
         # Randomly choose between distorted or compressed
         if random.random() < 0.5:
-            modified_img = load_image_for_yolo(os.path.join(self.distorted_path, img_name))
+            # Distorted images are PNG
+            modified_img = load_image_for_yolo(os.path.join(self.distorted_path, f"{base_name}.png"))
         else:
-            modified_img = load_image_for_yolo(os.path.join(self.compressed_path, img_name))
+            # Compressed images are JPG
+            modified_img = load_image_for_yolo(os.path.join(self.compressed_path, f"{base_name}.jpg"))
             
         return {
             'gt': gt_img,
