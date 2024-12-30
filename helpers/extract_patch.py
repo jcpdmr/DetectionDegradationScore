@@ -9,6 +9,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 from functools import partial
+from PIL import Image
 
 def create_directory_structure():
     """
@@ -65,19 +66,35 @@ def get_video_info(video_path):
     duration = float(info['format']['duration'])
     return width, height, duration
 
-def apply_compression_artifacts(input_path, output_path, quality=30):
+def apply_compression_artifacts(input_path, output_path, quality_range=(20, 50)):
     """
-    Apply compression artifacts using FFmpeg with a low quality setting
+    Apply JPEG compression artifacts to an image with random quality
+    
+    Args:
+        input_path (str): Path to input image
+        output_path (str): Path to save compressed image
+        quality_range (tuple): Range of quality values (min, max)
+    
+    Returns:
+        str: Path to compressed image
     """
-    cmd = [
-        'ffmpeg', '-i', input_path,
-        '-qscale:v', str(quality),  # Set quality level
-        '-codec:v', 'mjpeg',   # Use JPEG compression
-        '-threads', '1',       # Single thread for better parallelization
-        output_path
-    ]
-    subprocess.run(cmd, capture_output=True)
-    return output_path
+    try:
+        # Generate random quality value
+        quality = random.randint(quality_range[0], quality_range[1])
+        
+        # Open and convert image to RGB
+        with Image.open(input_path) as img:
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Save with JPEG compression
+            img.save(output_path, 'JPEG', quality=quality, optimize=True)
+            
+        return output_path
+    
+    except Exception as e:
+        print(f"Error compressing image: {str(e)}")
+        return None
 
 def apply_distortions(input_path, output_path):
     """
@@ -86,22 +103,43 @@ def apply_distortions(input_path, output_path):
     img = cv2.imread(input_path)
     
     # Randomly select distortion type
-    # distortion_type = random.choice(['gaussian_noise', 'gaussian_blur', 'color_shift'])
-    distortion_type = random.choice(['gaussian_blur'])
+    distortion_type = random.choice(['color_shift'])
+    # distortion_type = random.choice(['gaussian_blur'])
     
     if distortion_type == 'gaussian_noise':
-        noise = np.random.normal(0, 25, img.shape).astype(np.uint8)
-        distorted = cv2.add(img, noise)
+        std_dev = random.uniform(1, 8)
+        # Convert to float32 for better precision in noise addition
+        img_float = img.astype(np.float32) / 255.0
+        noise = np.random.normal(0, std_dev/255.0, img.shape)
+        noisy = img_float + noise
+        # Clip values to maintain valid pixel range
+        noisy = np.clip(noisy, 0, 1)
+        # Convert back to uint8
+        distorted = (noisy * 255).astype(np.uint8)
     
     elif distortion_type == 'gaussian_blur':
+        # Kernel sizes for slight to moderate blur
+        # Simulating motion blur or out-of-focus effects
         kernel_size = random.choice([3, 5, 7])
-        distorted = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
+        # Sigma values between 0.3 and 2.0 for natural blur appearance
+        sigma = random.uniform(0.3, 2.0)
+        distorted = cv2.GaussianBlur(img, (kernel_size, kernel_size), sigma)
     
     else:  # color_shift
-        channels = cv2.split(img)
-        shift_amount = random.randint(10, 30)
-        shifted_channels = [np.roll(channel, shift_amount) for channel in channels]
-        distorted = cv2.merge(shifted_channels)
+        # Split into BGR channels
+        b, g, r = cv2.split(img)
+        
+        # Define random shift amount (can be adjusted)
+        shift_x = np.random.randint(1, 5)
+        
+        # Shift blue channel left
+        b_shifted = np.roll(b, -shift_x, axis=1)
+        
+        # Shift red channel right 
+        r_shifted = np.roll(r, shift_x, axis=1)
+        
+        # Merge channels back
+        distorted = cv2.merge([b_shifted, g, r_shifted])
     
     cv2.imwrite(output_path, distorted)
     return output_path
