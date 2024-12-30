@@ -65,56 +65,63 @@ def get_video_info(video_path):
     duration = float(info['format']['duration'])
     return width, height, duration
 
-# def apply_compression_artifacts(input_path, output_path, quality=30):
-#     """
-#     Apply compression artifacts using FFmpeg with a low quality setting
-#     Args:
-#         input_path: Path to input image
-#         output_path: Path to save compressed image
-#         quality: JPEG quality (0-100, where 20-30 simulates typical web video compression)
-#                         Lower values create more visible artifacts but stay in realistic range
-#     """
-#     cmd = [
-#         'ffmpeg', '-i', input_path,
-#         '-qscale:v', str(quality),  # Set quality level
-#         '-codec:v', 'mjpeg',   # Use JPEG compression
-#         output_path
-#     ]
-#     subprocess.run(cmd, capture_output=True)
+def apply_compression_artifacts(input_path, output_path, quality=30):
+    """
+    Apply compression artifacts using FFmpeg with a low quality setting
+    """
+    cmd = [
+        'ffmpeg', '-i', input_path,
+        '-qscale:v', str(quality),  # Set quality level
+        '-codec:v', 'mjpeg',   # Use JPEG compression
+        '-threads', '1',       # Single thread for better parallelization
+        output_path
+    ]
+    subprocess.run(cmd, capture_output=True)
+    return output_path
 
-# def apply_lpips_style_distortions(image_path):
-#     """
-#     Apply distortions similar to those used in LPIPS training
-#     Args:
-#         image_path: Path to input image
-#     Returns:
-#         Distorted image as numpy array
-#     """
-#     # Read image
-#     img = cv2.imread(image_path)
+def apply_distortions(input_path, output_path):
+    """
+    Apply distortions to the input image
+    """
+    img = cv2.imread(input_path)
     
-#     # Randomly select distortion type
-#     # ['gaussian_noise', 'gaussian_blur', 'color_shift']
-#     distortion_type = random.choice(['gaussian_blur']) 
+    # Randomly select distortion type
+    # distortion_type = random.choice(['gaussian_noise', 'gaussian_blur', 'color_shift'])
+    distortion_type = random.choice(['gaussian_blur'])
     
-#     if distortion_type == 'gaussian_noise':
-#         # Add Gaussian noise
-#         noise = np.random.normal(0, 25, img.shape).astype(np.uint8)
-#         distorted = cv2.add(img, noise)
+    if distortion_type == 'gaussian_noise':
+        noise = np.random.normal(0, 25, img.shape).astype(np.uint8)
+        distorted = cv2.add(img, noise)
     
-#     elif distortion_type == 'gaussian_blur':
-#         # Apply Gaussian blur
-#         kernel_size = random.choice([3, 5, 7])
-#         distorted = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
+    elif distortion_type == 'gaussian_blur':
+        kernel_size = random.choice([3, 5, 7])
+        distorted = cv2.GaussianBlur(img, (kernel_size, kernel_size), 0)
     
-#     else:  # color_shift
-#         # Randomly shift color channels
-#         channels = cv2.split(img)
-#         shift_amount = random.randint(10, 30)
-#         shifted_channels = [np.roll(channel, shift_amount) for channel in channels]
-#         distorted = cv2.merge(shifted_channels)
+    else:  # color_shift
+        channels = cv2.split(img)
+        shift_amount = random.randint(10, 30)
+        shifted_channels = [np.roll(channel, shift_amount) for channel in channels]
+        distorted = cv2.merge(shifted_channels)
     
-#     return distorted
+    cv2.imwrite(output_path, distorted)
+    return output_path
+
+def process_single_patch(extracted_patch_path):
+    """
+    Process a single extracted patch to create compressed and distorted versions
+    """
+    base_name = os.path.basename(extracted_patch_path)
+    name_without_ext = os.path.splitext(base_name)[0]
+    
+    # Define output paths
+    compressed_path = f'patches/compressed/{name_without_ext}.jpg'
+    distorted_path = f'patches/distorted/{name_without_ext}.png'
+    
+    # Apply both transformations
+    apply_compression_artifacts(extracted_patch_path, compressed_path)
+    apply_distortions(extracted_patch_path, distorted_path)
+    
+    return compressed_path, distorted_path
 
 def extract_single_patch(video_path, patch_size, output_dir, video_name, patch_info):
     """
@@ -187,17 +194,12 @@ def extract_patches(video_path, n_patches=50, patch_size=640, max_workers=4):
 
 def process_videos(video_folder, n_patches=64, max_workers=4):
     """
-    Process all videos in parallel using a thread pool
-    Args:
-        video_folder: Folder containing input videos
-        n_patches: Number of patches to extract per video
-        max_workers: Maximum number of parallel workers
+    Process all videos and create compressed/distorted versions in parallel
     """
-
-    # Start timing the entire process
     start_time = time.time()
-    print("Starting patch extraction...")
+    print("Starting patch extraction and processing...")
 
+    # Get video files
     video_files = [
         os.path.join(video_folder, f) 
         for f in os.listdir(video_folder) 
@@ -206,6 +208,7 @@ def process_videos(video_folder, n_patches=64, max_workers=4):
     n_videos = len(video_files)
     expected_patches = n_videos * n_patches
 
+    # Extract patches from all videos
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(extract_patches, video_path, n_patches)
@@ -215,30 +218,48 @@ def process_videos(video_folder, n_patches=64, max_workers=4):
         for future in as_completed(futures):
             future.result()
 
-    # Verify the number of extracted patches
-    extracted_patches = len([
-        f for f in os.listdir('patches/extracted') 
+    # Get list of extracted patches
+    extracted_patches = [
+        os.path.join('patches/extracted', f)
+        for f in os.listdir('patches/extracted')
         if f.endswith('.png')
-    ])
+    ]
+
+    # Process extracted patches in parallel
+    print("\nStarting compression and distortion processing...")
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(process_single_patch, patch_path)
+            for patch_path in extracted_patches
+        ]
+        
+        for future in as_completed(futures):
+            future.result()
+
+    # Verify results
+    extracted_count = len(extracted_patches)
+    compressed_count = len([f for f in os.listdir('patches/compressed') if f.endswith('.jpg')])
+    distorted_count = len([f for f in os.listdir('patches/distorted') if f.endswith('.png')])
     
     # Calculate elapsed time
     elapsed_time = time.time() - start_time
-    # Format times for better readability
     elapsed_formatted = str(timedelta(seconds=int(elapsed_time)))
 
     # Print verification results
-    print("\n-----Extraction Verification Results-----")
+    print("\n-----Processing Results-----")
     print(f"Number of videos processed: {n_videos}")
     print(f"Patches per video: {n_patches}")
-    print(f"Expected total patches: {expected_patches}")
-    print(f"Actually extracted patches: {extracted_patches}")
+    print(f"Expected patches: {expected_patches}")
+    print(f"Extracted patches: {extracted_count}")
+    print(f"Compressed patches: {compressed_count}")
+    print(f"Distorted patches: {distorted_count}")
     print(f"Total execution time: {elapsed_formatted} (HH:MM:SS)")
-    print("----------------------------------------\n")
+    print("-------------------------\n")
     
-    if extracted_patches == expected_patches:
-        print("✓ Extraction completed successfully: All patches were extracted")
+    if extracted_count == compressed_count == distorted_count == expected_patches:
+        print("✓ Processing completed successfully")
     else:
-        raise Exception(f"Extraction incomplete: {expected_patches - extracted_patches} patches are missing")
+        raise Exception("Processing incomplete: Mismatch in number of processed patches")
 if __name__ == '__main__':
     clear_output_folders(clear=True)
     create_directory_structure()
