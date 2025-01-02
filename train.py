@@ -31,10 +31,15 @@ def train_perceptual_loss(
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
-    # Create log file with timestamp
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    train_log_path = os.path.join(output_dir, f"log_{timestamp}_trn.csv")
-    val_log_path = os.path.join(output_dir, f"log_{timestamp}_val.csv")
+    # Create run-specific output directory
+    run_output_dir = os.path.join(output_dir, timestamp)
+    os.makedirs(run_output_dir, exist_ok=True)
+
+    # Create log files with timestamp
+    train_log_path = os.path.join(run_output_dir, f"log_{timestamp}_trn.csv")
+    val_log_path = os.path.join(run_output_dir, f"log_{timestamp}_val.csv")
+    weights_log_path = os.path.join(run_output_dir, f"log_{timestamp}_weights.csv")
 
     with open(train_log_path, "w") as log_file:
         # Write header
@@ -42,6 +47,11 @@ def train_perceptual_loss(
     with open(val_log_path, "w") as log_file:
         # Write header
         log_file.write("epoch,loss,mAP,avg_distance,normalized_distance\n")
+    with open(weights_log_path, "w") as log_file:
+        log_file.write("epoch,feature_weight_02,feature_weight_09,feature_weight_16,")
+        log_file.write("lin_02_min,lin_02_max,lin_02_mean,lin_02_std,")
+        log_file.write("lin_09_min,lin_09_max,lin_09_mean,lin_09_std,")
+        log_file.write("lin_16_min,lin_16_max,lin_16_mean,lin_16_std\n")
 
     # Initialize models
     yolo_model.eval()  # Freeze YOLO weights
@@ -117,6 +127,27 @@ def train_perceptual_loss(
                 f"{avg_train_metrics['norm_distance']:.6f}\n"
             )
 
+        with open(weights_log_path, "a") as log_file:
+            feature_weights = yolo_similarity_model.layer_weights.detach().cpu().numpy()
+
+            lin_02_weights = yolo_similarity_model.lin_02.weight.detach().cpu().numpy()
+            lin_09_weights = yolo_similarity_model.lin_09.weight.detach().cpu().numpy()
+            lin_16_weights = yolo_similarity_model.lin_16.weight.detach().cpu().numpy()
+
+            log_file.write(f"{epoch+1},")
+            log_file.write(
+                f"{feature_weights[0]:.6f},{feature_weights[1]:.6f},{feature_weights[2]:.6f},"
+            )
+
+            log_file.write(f"{lin_02_weights.min():.6f},{lin_02_weights.max():.6f},")
+            log_file.write(f"{lin_02_weights.mean():.6f},{lin_02_weights.std():.6f},")
+
+            log_file.write(f"{lin_09_weights.min():.6f},{lin_09_weights.max():.6f},")
+            log_file.write(f"{lin_09_weights.mean():.6f},{lin_09_weights.std():.6f},")
+
+            log_file.write(f"{lin_16_weights.min():.6f},{lin_16_weights.max():.6f},")
+            log_file.write(f"{lin_16_weights.mean():.6f},{lin_16_weights.std():.6f}\n")
+
         # Validation phase if needed
         if (epoch + 1) % val_frequency == 0:
             yolo_similarity_model.eval()
@@ -176,6 +207,7 @@ def train_perceptual_loss(
             # Save best model and check for early stopping
             if avg_val_metrics["loss"] < best_val_loss:
                 best_val_loss = avg_val_metrics["loss"]
+                model_save_path = os.path.join(run_output_dir, "best_model.pth")
                 torch.save(
                     {
                         "epoch": epoch,
@@ -184,7 +216,7 @@ def train_perceptual_loss(
                         "best_val_loss": best_val_loss,
                         "layer_configs": layer_configs,
                     },
-                    os.path.join(output_dir, "best_model.pth"),
+                    model_save_path,
                 )
                 patience_counter = 0
             else:

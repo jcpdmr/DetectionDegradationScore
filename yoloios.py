@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import torch
 import torch.nn as nn
 from typing import Tuple, List
+import torch.nn.functional as F
 from dataclasses import dataclass
 from collections import OrderedDict
 
@@ -162,15 +163,16 @@ class YOLOSimilarity(nn.Module):
             256, 1, 1, stride=1, padding=0, bias=False
         )  # Pre-detection features (layer 16)
 
-        # Initialize learnable weights for each layer's contribution to final distance
-        # These weights help balance the importance of different feature levels
-        self.layer_weights = nn.Parameter(torch.ones(3))
+        # Initialize learnable weights for each layer's contribution using truncated normal
+        # This ensures values stay reasonably close to 1 while providing initial diversity
+        self.layer_weights = nn.Parameter(torch.empty(3))
+        nn.init.trunc_normal_(self.layer_weights, mean=1.0, std=0.2, a=0.6, b=1.4)
 
-        # Initialize all convolutional weights to 1.0
+        # Initialize all convolutional weights around 1.0
         # This ensures equal initial contribution from all channels
-        self.lin_02.weight.data.fill_(1.0)
-        self.lin_09.weight.data.fill_(1.0)
-        self.lin_16.weight.data.fill_(1.0)
+        self.lin_02.weight.data.normal_(mean=1.0, std=0.1)
+        self.lin_09.weight.data.normal_(mean=1.0, std=0.1)
+        self.lin_16.weight.data.normal_(mean=1.0, std=0.1)
 
     def normalize_tensor(self, x: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
         """
@@ -248,11 +250,14 @@ class YOLOSimilarity(nn.Module):
             self.lin_16,
         )
 
+        # Apply softmax to weights to ensure sum is 1 and they don't all go to 0 at the same time
+        normalized_weights = F.softmax(self.layer_weights, dim=0)
+
         # Combine distances using learned layer weights
         total_distance = (
-            self.layer_weights[0] * d_02
-            + self.layer_weights[1] * d_09
-            + self.layer_weights[2] * d_16
+            normalized_weights[0] * d_02
+            + normalized_weights[1] * d_09
+            + normalized_weights[2] * d_16
         )
 
         # Remove singleton dimensions and return
