@@ -6,7 +6,7 @@ import torch.nn as nn
 from tqdm import tqdm
 from patches_loader import create_dataloaders
 from typing import Tuple, Dict
-from score_metrics import calculate_batch_mAP
+from score_metrics import match_predictions
 from yoloios import (
     extract_multiple_features_and_predictions,
     LayerConfig,
@@ -258,20 +258,15 @@ def process_batch(
         yolo_model, modified_batch, layer_configs
     )
 
-    # Calculate metrics
-    batch_mAP = calculate_batch_mAP(gt_predictions, mod_predictions)
-
+    # Calculate distances between feature maps
     distances = yolo_similarity_model(gt_features, mod_features)
-    avg_distance = distances.mean()
-
-    # Normalize distance to [0,1] range. mAP is already in [0,1] no need to normalize
-    normalized_distance = torch.sigmoid(avg_distance)
-
-    # Move batch_mAP to correct device
-    batch_mAP = torch.as_tensor(batch_mAP).to(device)
-
-    # Compute loss (inverse correlation: low distance -> high mAP, high distance -> low mAP)
-    loss = mse_criterion(1 - normalized_distance, batch_mAP)
+    
+    # Get error scores for each image pair in the batch
+    matches = match_predictions(gt_predictions, mod_predictions)
+    error_scores = torch.as_tensor([m['error_score'] for m in matches]).to(device)
+    
+    # Compute loss directly between distances and error scores
+    loss = mse_criterion(distances, error_scores)
 
     # Backpropagation if in training mode
     if training and optimizer is not None:
@@ -279,7 +274,7 @@ def process_batch(
         loss.backward()
         optimizer.step()
 
-    return loss.item(), batch_mAP.item(), normalized_distance.item()
+    return loss.item(), error_scores.mean().item(), distances.mean().item()
 
 
 def visualize_batch(batch, save_path="batch_visualization.png"):
