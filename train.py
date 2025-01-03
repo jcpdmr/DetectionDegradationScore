@@ -43,10 +43,10 @@ def train_perceptual_loss(
 
     with open(train_log_path, "w") as log_file:
         # Write header
-        log_file.write("epoch,loss,mAP,avg_distance,normalized_distance\n")
+        log_file.write("epoch,loss,avg_error_score,avg_distance,normalized_distance\n")
     with open(val_log_path, "w") as log_file:
         # Write header
-        log_file.write("epoch,loss,mAP,avg_distance,normalized_distance\n")
+        log_file.write("epoch,loss,avg_error_score,avg_distance,normalized_distance\n")
     with open(weights_log_path, "w") as log_file:
         log_file.write("epoch,feature_weight_02,feature_weight_09,feature_weight_16,")
         log_file.write("lin_02_min,lin_02_max,lin_02_mean,lin_02_std,")
@@ -85,7 +85,7 @@ def train_perceptual_loss(
         # Training phase
         yolo_similarity_model.train()
         train_losses = []
-        train_maps = []
+        train_mean_error_score = []
         train_distances = []
         train_norm_distances = []
 
@@ -97,7 +97,7 @@ def train_perceptual_loss(
         )
 
         for batch in train_prog_bar:
-            loss, mAP, distance = process_batch(
+            loss, error_score, distance = process_batch(
                 yolo_model,
                 yolo_similarity_model,
                 batch,
@@ -108,14 +108,15 @@ def train_perceptual_loss(
                 training=True,
             )
             train_losses.append(loss)
-            train_maps.append(mAP)
+            train_mean_error_score.append(error_score)
             train_distances.append(distance)
             train_norm_distances.append(torch.sigmoid(torch.tensor(distance)).item())
 
         # Log training metrics
         avg_train_metrics = {
             "loss": sum(train_losses) / len(train_losses),
-            "mAP": sum(train_maps) / len(train_maps),
+            "mean_errore_score": sum(train_mean_error_score)
+            / len(train_mean_error_score),
             "distance": sum(train_distances) / len(train_distances),
             "norm_distance": sum(train_norm_distances) / len(train_norm_distances),
         }
@@ -123,7 +124,7 @@ def train_perceptual_loss(
         with open(train_log_path, "a") as log_file:
             log_file.write(
                 f"{epoch+1},{avg_train_metrics['loss']:.6f},"
-                f"{avg_train_metrics['mAP']:.6f},{avg_train_metrics['distance']:.6f},"
+                f"{avg_train_metrics['mean_errore_score']:.6f},{avg_train_metrics['distance']:.6f},"
                 f"{avg_train_metrics['norm_distance']:.6f}\n"
             )
 
@@ -152,7 +153,7 @@ def train_perceptual_loss(
         if (epoch + 1) % val_frequency == 0:
             yolo_similarity_model.eval()
             val_losses = []
-            val_maps = []
+            val_mean_error_score = []
             val_distances = []
             val_norm_distances = []
 
@@ -162,7 +163,7 @@ def train_perceptual_loss(
 
             with torch.no_grad():
                 for batch in val_prog_bar:
-                    loss, mAP, distance = process_batch(
+                    loss, error_score, distance = process_batch(
                         yolo_model,
                         yolo_similarity_model,
                         batch,
@@ -172,7 +173,7 @@ def train_perceptual_loss(
                         training=False,
                     )
                     val_losses.append(loss)
-                    val_maps.append(mAP)
+                    val_mean_error_score.append(error_score)
                     val_distances.append(distance)
                     val_norm_distances.append(
                         torch.sigmoid(torch.tensor(distance)).item()
@@ -181,7 +182,8 @@ def train_perceptual_loss(
             # Log validation metrics
             avg_val_metrics = {
                 "loss": sum(val_losses) / len(val_losses),
-                "mAP": sum(val_maps) / len(val_maps),
+                "mean_error_score": sum(val_mean_error_score)
+                / len(val_mean_error_score),
                 "distance": sum(val_distances) / len(val_distances),
                 "norm_distance": sum(val_norm_distances) / len(val_norm_distances),
             }
@@ -189,18 +191,18 @@ def train_perceptual_loss(
             with open(val_log_path, "a") as log_file:
                 log_file.write(
                     f"{epoch+1},{avg_val_metrics['loss']:.6f},"
-                    f"{avg_val_metrics['mAP']:.6f},{avg_val_metrics['distance']:.6f},"
+                    f"{avg_val_metrics['mean_error_score']:.6f},{avg_val_metrics['distance']:.6f},"
                     f"{avg_val_metrics['norm_distance']:.6f}\n"
                 )
 
             # Print current metrics
             print(f"\nEpoch {epoch+1}/{num_epochs}")
             print(
-                f"Train - Loss: {avg_train_metrics['loss']:.4f}, mAP: {avg_train_metrics['mAP']:.4f}, "
+                f"Train - Loss: {avg_train_metrics['loss']:.4f}, Error Score: {avg_train_metrics['mean_error_score']:.4f}, "
                 f"Norm Distance: {avg_train_metrics['norm_distance']:.4f}"
             )
             print(
-                f"Val   - Loss: {avg_val_metrics['loss']:.4f}, mAP: {avg_val_metrics['mAP']:.4f}, "
+                f"Val   - Loss: {avg_val_metrics['loss']:.4f}, Error Score: {avg_val_metrics['mean_error_score']:.4f}, "
                 f"Norm Distance: {avg_val_metrics['norm_distance']:.4f}\n"
             )
 
@@ -228,7 +230,7 @@ def train_perceptual_loss(
             # Print only training metrics
             print(f"\nEpoch {epoch+1}/{num_epochs}")
             print(
-                f"Train - Loss: {avg_train_metrics['loss']:.4f}, mAP: {avg_train_metrics['mAP']:.4f}, "
+                f"Train - Loss: {avg_train_metrics['loss']:.4f}, Error Score: {avg_train_metrics['mean_error_score']:.4f}, "
                 f"Norm Distance: {avg_train_metrics['norm_distance']:.4f}\n"
             )
 
@@ -245,7 +247,7 @@ def process_batch(
 ) -> Tuple[float, float, float]:
     """
     Process a single batch (training or validation)
-    Returns loss, mAP and normalized distance for monitoring
+    Returns loss, error_score and normalized distance for monitoring
     """
     gt_batch = batch["gt"].to(device)
     modified_batch = batch["modified"].to(device)
@@ -260,11 +262,11 @@ def process_batch(
 
     # Calculate distances between feature maps
     distances = yolo_similarity_model(gt_features, mod_features)
-    
+
     # Get error scores for each image pair in the batch
     matches = match_predictions(gt_predictions, mod_predictions)
-    error_scores = torch.as_tensor([m['error_score'] for m in matches]).to(device)
-    
+    error_scores = torch.as_tensor([m["error_score"] for m in matches]).to(device)
+
     # Compute loss directly between distances and error scores
     loss = mse_criterion(distances, error_scores)
 
