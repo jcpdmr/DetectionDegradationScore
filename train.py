@@ -115,7 +115,7 @@ def train_perceptual_loss(
         # Log training metrics
         avg_train_metrics = {
             "loss": sum(train_losses) / len(train_losses),
-            "mean_errore_score": sum(train_mean_error_score)
+            "mean_error_score": sum(train_mean_error_score)
             / len(train_mean_error_score),
             "distance": sum(train_distances) / len(train_distances),
             "norm_distance": sum(train_norm_distances) / len(train_norm_distances),
