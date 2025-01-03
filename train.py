@@ -6,7 +6,7 @@ import torch.nn as nn
 from tqdm import tqdm
 from patches_loader import create_dataloaders
 from typing import Tuple, Dict
-from mAP import calculate_batch_mAP
+from score_metrics import calculate_batch_mAP
 from yoloios import (
     extract_multiple_features_and_predictions,
     LayerConfig,
