@@ -124,7 +124,7 @@ def train_perceptual_loss(
         with open(train_log_path, "a") as log_file:
             log_file.write(
                 f"{epoch+1},{avg_train_metrics['loss']:.6f},"
-                f"{avg_train_metrics['mean_errore_score']:.6f},{avg_train_metrics['distance']:.6f},"
+                f"{avg_train_metrics['mean_error_score']:.6f},{avg_train_metrics['distance']:.6f},"
                 f"{avg_train_metrics['norm_distance']:.6f}\n"
             )
 
