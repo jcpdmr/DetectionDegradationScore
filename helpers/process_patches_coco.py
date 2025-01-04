@@ -81,14 +81,17 @@ def process_single_image(args):
         return False
 
 
-def main():
-    # Create output directory structure
-    create_directory_structure()
+def process_split(split_name, base_path):
+    """
+    Process all images in a specific dataset split
 
-    # Get list of input images
-    input_dir = Path("patches/extracted")
+    Args:
+        split_name: Name of the split (train/val/test)
+        base_path: Root directory of the dataset
+    """
+    input_dir = Path(base_path) / split_name / "extracted"
     if not input_dir.exists():
-        raise ValueError("Input directory 'patches/extracted' not found!")
+        raise ValueError(f"Input directory '{input_dir}' not found!")
 
     image_files = (
         list(input_dir.glob("*.jpg"))
@@ -100,29 +103,45 @@ def main():
     process_args = [
         (
             str(img_path),
-            str(Path("patches/compressed") / img_path.name),
-            str(Path("patches/distorted") / img_path.name),
+            str(Path(base_path) / split_name / "compressed" / img_path.name),
+            str(Path(base_path) / split_name / "distorted" / img_path.name),
         )
         for img_path in image_files
     ]
 
     # Process images in parallel with progress bar
-    num_workers = os.cpu_count()  # Use all available CPU cores
+    num_workers = os.cpu_count()
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         results = list(
             tqdm(
                 executor.map(process_single_image, process_args),
                 total=len(process_args),
-                desc="Processing images",
+                desc=f"Processing {split_name} split",
             )
         )
 
-    # Print statistics
-    successful = sum(results)
-    failed = len(results) - successful
-    print("\nProcessing complete:")
-    print(f"Successfully processed: {successful} images")
-    print(f"Failed: {failed} images")
+    return sum(results), len(results) - sum(results)
+
+
+def main():
+    BASE_PATH = "dataset"  # Changed from patches to dataset
+    splits = ["train", "val", "test"]
+
+    total_successful = 0
+    total_failed = 0
+
+    for split in splits:
+        print(f"\nProcessing {split} split...")
+        successful, failed = process_split(split, BASE_PATH)
+        total_successful += successful
+        total_failed += failed
+        print(f"{split} split complete:")
+        print(f"Successfully processed: {successful} images")
+        print(f"Failed: {failed} images")
+
+    print("\nTotal processing complete:")
+    print(f"Total successfully processed: {total_successful} images")
+    print(f"Total failed: {total_failed} images")
 
 
 if __name__ == "__main__":

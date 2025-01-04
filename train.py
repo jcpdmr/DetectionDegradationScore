@@ -3,9 +3,10 @@ import os
 import time
 import torch
 import torch.nn as nn
+import numpy as np
 from tqdm import tqdm
 from patches_loader import create_dataloaders
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional, List
 from score_metrics import match_predictions
 from yoloios import (
     extract_multiple_features_and_predictions,
@@ -24,14 +25,23 @@ def train_perceptual_loss(
     patience: int = 5,
     output_dir: str = "output",
     seed: int = 42,
+    modification_types: Optional[List[str]] = None,
 ):
     """
     Train the perceptual loss model with validation and early stopping
+
+    Args:
+        modification_types: List of modification types to train on. If None, uses all available types.
     """
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
 
     timestamp = time.strftime("%Y%m%d-%H%M%S")
+
+    # Add modification type to the output directory name if specific types are selected
+    if modification_types and len(modification_types) == 1:
+        timestamp += f"_{modification_types[0]}"
+
     # Create run-specific output directory
     run_output_dir = os.path.join(output_dir, timestamp)
     os.makedirs(run_output_dir, exist_ok=True)
@@ -64,7 +74,25 @@ def train_perceptual_loss(
         yolo_similarity_model = yolo_similarity_model.cuda()
 
     # Create dataloaders
-    train_loader, val_loader = create_dataloaders(data_path, batch_size, seed=seed)
+    train_loader, val_loader, _ = create_dataloaders(
+        data_path,
+        batch_size,
+        num_workers=os.cpu_count(),
+        seed=seed,
+        modification_types=modification_types,
+    )
+
+    # Log the training configuration
+    with open(os.path.join(run_output_dir, "training_config.txt"), "w") as f:
+        f.write("Training Configuration\n")
+        f.write("=" * 50 + "\n\n")
+        f.write(f"Timestamp: {timestamp}\n")
+        f.write(f"Modification types: {modification_types or 'all'}\n")
+        f.write(f"Batch size: {batch_size}\n")
+        f.write(f"Learning rate: {learning_rate}\n")
+        f.write(f"Number of epochs: {num_epochs}\n")
+        f.write(f"Validation frequency: {val_frequency}\n")
+        f.write(f"Early stopping patience: {patience}\n")
 
     # Setup training
     optimizer = torch.optim.Adam(yolo_similarity_model.parameters(), lr=learning_rate)
@@ -233,6 +261,12 @@ def train_perceptual_loss(
                 f"Train - Loss: {avg_train_metrics['loss']:.4f}, Error Score: {avg_train_metrics['mean_error_score']:.4f}, "
                 f"Norm Distance: {avg_train_metrics['norm_distance']:.4f}\n"
             )
+    return {
+        "model_path": os.path.join(run_output_dir, "best_model.pth"),
+        "output_dir": run_output_dir,
+        "layer_configs": layer_configs,
+        "modification_types": modification_types,
+    }
 
 
 def process_batch(
@@ -309,3 +343,149 @@ def visualize_batch(batch, save_path="batch_visualization.png"):
     plt.tight_layout()
     plt.savefig(save_path)
     plt.close()
+
+
+def test_perceptual_loss(
+    yolo_model: YOLO,
+    model_path: str,
+    data_path: str,
+    batch_size: int,
+    output_dir: str,
+    layer_configs: list,
+    manual_test: bool = False,
+    modification_types: Optional[List[str]] = None,
+):
+    """
+    Test the trained perceptual loss model on the test set.
+
+    Args:
+        yolo_model: Base YOLO model for feature extraction
+        model_path: Path to the trained model weights
+        data_path: Path to dataset root directory
+        batch_size: Batch size for testing
+        output_dir: Directory to save test results
+        layer_configs: Layer configurations for feature extraction
+        manual_test: If True, saves results with '_manual' suffix to differentiate from automatic test results
+        modification_types: List of modification types to test on. If None, uses all available types.
+    """
+    # Initialize models
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    yolo_model.eval()
+    yolo_similarity_model = YOLOSimilarity().to(device)
+
+    # Load trained weights
+    checkpoint = torch.load(model_path)
+    yolo_similarity_model.load_state_dict(checkpoint["model_state_dict"])
+    yolo_similarity_model.eval()
+
+    # Create test dataloader
+    _, _, test_loader = create_dataloaders(
+        data_path,
+        batch_size,
+        num_workers=os.cpu_count(),
+    )
+
+    # Lists for storing results
+    similarities = []
+    error_scores = []
+    image_pairs = []
+    mod_types = []
+
+    # Test loop
+    with torch.no_grad():
+        test_progress = tqdm(test_loader, desc="Testing")
+        for batch in test_progress:
+            gt_batch = batch["gt"].to(device)
+            modified_batch = batch["modified"].to(device)
+
+            # Extract features and predictions
+            gt_features, gt_predictions = extract_multiple_features_and_predictions(
+                yolo_model, gt_batch, layer_configs
+            )
+            mod_features, mod_predictions = extract_multiple_features_and_predictions(
+                yolo_model, modified_batch, layer_configs
+            )
+
+            # Calculate similarity scores
+            batch_similarities = yolo_similarity_model(gt_features, mod_features)
+
+            # Calculate error scores
+            matches = match_predictions(gt_predictions, mod_predictions)
+            batch_error_scores = torch.tensor([m["error_score"] for m in matches]).to(
+                device
+            )
+
+            # Store results
+            similarities.extend(batch_similarities.cpu().numpy())
+            error_scores.extend(batch_error_scores.cpu().numpy())
+            image_pairs.extend(zip(batch["name"], batch["name"]))
+            mod_types.extend(batch["mod_type"])
+
+    # Initialize the suffix as empty string
+    suffix = ""
+
+    # Add manual suffix if this is a manual test
+    if manual_test:
+        suffix += "_manual"
+
+    # Add modification type to suffix if we're testing a specific type
+    if modification_types and len(modification_types) == 1:
+        suffix += f"_{modification_types[0]}"
+
+    # If no suffix was added (not manual and no specific modification),
+    # use the default filenames
+    if suffix:
+        results_filename = f"test_results{suffix}.csv"
+        stats_filename = f"test_statistics{suffix}.txt"
+    else:
+        results_filename = "test_results.csv"
+        stats_filename = "test_statistics.txt"
+
+    # Save detailed results
+    results_path = os.path.join(output_dir, results_filename)
+    with open(results_path, "w") as f:
+        f.write("image_name,modification_type,similarity_score,error_score\n")
+        for (img_name, _), mod_type, sim, err in zip(
+            image_pairs, mod_types, similarities, error_scores
+        ):
+            f.write(f"{img_name},{mod_type},{sim:.6f},{err:.6f}\n")
+
+    # Calculate and save statistics
+    stats_path = os.path.join(output_dir, stats_filename)
+    with open(stats_path, "w") as f:
+        f.write("Test Statistics\n")
+        f.write("=" * 50 + "\n\n")
+
+        # Overall statistics
+        correlation = np.corrcoef(similarities, error_scores)[0, 1]
+        mse = np.mean((np.array(similarities) - np.array(error_scores)) ** 2)
+
+        f.write("Overall Statistics:\n")
+        f.write(f"Total images tested: {len(similarities)}\n")
+        f.write(f"Correlation coefficient: {correlation:.4f}\n")
+        f.write(f"MSE(similarites-error scores): {mse:.4f}\n\n")
+
+        # Per-modification type statistics
+        f.write("Statistics by Modification Type:\n")
+        for mod_type in set(mod_types):
+            mask = np.array(mod_types) == mod_type
+            mod_sims = np.array(similarities)[mask]
+            mod_errs = np.array(error_scores)[mask]
+
+            mod_mse = np.mean((mod_sims - mod_errs) ** 2)
+
+            f.write(f"\n{mod_type.upper()}:\n")
+            f.write(f"Count: {len(mod_sims)}\n")
+            f.write(f"Mean similarity_score: {np.mean(mod_sims):.4f}\n")
+            f.write(f"Mean error_score: {np.mean(mod_errs):.4f}\n")
+            f.write(
+                f"Correlation coefficient: {np.corrcoef(mod_sims, mod_errs)[0,1]:.4f}\n"
+            )
+            f.write(f"MSE(similarites-error scores): {mod_mse:.4f}\n")
+
+    return {
+        "similarities": similarities,
+        "error_scores": error_scores,
+        "correlation": correlation,
+        "mse": mse,
+    }

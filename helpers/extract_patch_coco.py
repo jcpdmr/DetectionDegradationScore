@@ -7,17 +7,49 @@ from tqdm import tqdm
 import random  # Added for random sampling
 
 
-def create_clean_directory(path):
+def create_split_directories(base_path, splits=["train", "val", "test"]):
     """
-    Create a directory if it doesn't exist, or clean it if it does.
+    Create the complete directory structure for the dataset splits
 
     Args:
-        path (str): Directory path to create or clean
+        base_path: Root directory for the dataset
+        splits: List of dataset splits to create
     """
-    directory = Path(path)
-    if directory.exists():
-        shutil.rmtree(directory)
-    directory.mkdir(parents=True)
+    modifications = ["extracted", "compressed", "distorted"]
+
+    for split in splits:
+        for mod in modifications:
+            path = Path(base_path) / split / mod
+            if path.exists():
+                shutil.rmtree(path)
+            path.mkdir(parents=True, exist_ok=True)
+
+
+def split_images(image_files, val_ratio=0.2, test_ratio=0.1, seed=42):
+    """
+    Split image files into train, validation and test sets
+
+    Args:
+        image_files: List of image paths
+        val_ratio: Proportion of validation set
+        test_ratio: Proportion of test set
+        seed: Random seed for reproducibility
+
+    Returns:
+        Dictionary containing split image lists
+    """
+    random.seed(seed)
+    random.shuffle(image_files)
+
+    total = len(image_files)
+    test_idx = int(total * (1 - test_ratio))
+    val_idx = int(test_idx * (1 - val_ratio))
+
+    return {
+        "train": image_files[:val_idx],
+        "val": image_files[val_idx:test_idx],
+        "test": image_files[test_idx:],
+    }
 
 
 def get_center_crop_coordinates(height, width, crop_size):
@@ -84,16 +116,15 @@ def process_image(args):
 def main():
     # Configuration
     INPUT_DIR = "../train2017"
-    OUTPUT_DIR = "patches/extracted"
+    OUTPUT_DIR = "dataset"
     TARGET_SIZE = 384  # Target size for the square patches
     MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
     NUM_WORKERS = os.cpu_count()  # Use all available CPU cores
-    MAX_IMAGES = 16000  # Maximum number of images to process
+    MAX_IMAGES = 25000  # Maximum number of images to process
 
-    # Create or clean output directory
-    create_clean_directory(OUTPUT_DIR)
-
-    # Get list of all images
+    # Create directory structure
+    create_split_directories(OUTPUT_DIR)
+    # Get and split image files
     input_path = Path(INPUT_DIR)
     image_files = (
         list(input_path.glob("*.jpg"))
@@ -101,34 +132,44 @@ def main():
         + list(input_path.glob("*.png"))
     )
 
-    # If we want to limit the number of images, randomly sample from the list
     if MAX_IMAGES and MAX_IMAGES < len(image_files):
-        # Set random seed for reproducibility
         random.seed(42)
         image_files = random.sample(image_files, MAX_IMAGES)
 
-    # Prepare arguments for processing
-    process_args = [
-        (img_path, Path(OUTPUT_DIR) / img_path.name, TARGET_SIZE, MIN_ACCEPTABLE_SIZE)
-        for img_path in image_files
-    ]
+    # Split datasets
+    splits = split_images(image_files)
 
-    # Process images in parallel with progress bar
-    with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
-        results = list(
-            tqdm(
-                executor.map(process_image, process_args),
-                total=len(process_args),
-                desc="Processing images",
+    # Process each split
+    for split_name, split_files in splits.items():
+        print(f"\nProcessing {split_name} split...")
+
+        # Prepare arguments for processing
+        process_args = [
+            (
+                img_path,
+                Path(OUTPUT_DIR) / split_name / "extracted" / img_path.name,
+                TARGET_SIZE,
+                MIN_ACCEPTABLE_SIZE,
             )
-        )
+            for img_path in split_files
+        ]
 
-    # Print statistics
-    processed = sum(1 for r in results if r)
-    skipped = len(results) - processed
-    print("\nProcessing complete:")
-    print(f"Successfully processed: {processed} images")
-    print(f"Skipped (too small): {skipped} images")
+        # Process images in parallel with progress bar
+        with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
+            results = list(
+                tqdm(
+                    executor.map(process_image, process_args),
+                    total=len(process_args),
+                    desc=f"Processing {split_name} images",
+                )
+            )
+
+        # Print split statistics
+        processed = sum(1 for r in results if r)
+        skipped = len(results) - processed
+        print(f"{split_name} split complete:")
+        print(f"Successfully processed: {processed} images")
+        print(f"Skipped (too small): {skipped} images")
 
 
 if __name__ == "__main__":

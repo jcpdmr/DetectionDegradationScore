@@ -2,7 +2,7 @@ yolo*.pt
 /*.png
 output/
 __pycache__/
-patches/
+dataset/
 prediction_results
 videos/
 draw/
