@@ -15,6 +15,16 @@ from yoloios import (
 )
 
 
+def log_conv_stats(conv_layer):
+    weights = conv_layer.weight.detach().cpu().numpy()
+    return {
+        "min": weights.min(),
+        "max": weights.max(),
+        "mean": weights.mean(),
+        "std": weights.std(),
+    }
+
+
 def train_perceptual_loss(
     yolo_model: YOLO,
     num_epochs: int,
@@ -53,15 +63,29 @@ def train_perceptual_loss(
 
     with open(train_log_path, "w") as log_file:
         # Write header
-        log_file.write("epoch,loss,avg_error_score,avg_distance,normalized_distance\n")
+        log_file.write("epoch,loss,avg_error_score,avg_distance\n")
     with open(val_log_path, "w") as log_file:
         # Write header
-        log_file.write("epoch,loss,avg_error_score,avg_distance,normalized_distance\n")
+        log_file.write("epoch,loss,avg_error_score,avg_distance\n")
     with open(weights_log_path, "w") as log_file:
-        log_file.write("epoch,feature_weight_02,feature_weight_09,feature_weight_16,")
-        log_file.write("lin_02_min,lin_02_max,lin_02_mean,lin_02_std,")
-        log_file.write("lin_09_min,lin_09_max,lin_09_mean,lin_09_std,")
-        log_file.write("lin_16_min,lin_16_max,lin_16_mean,lin_16_std\n")
+        # Weights header
+        log_file.write("epoch,")
+        log_file.write("layer_weight_raw_02,layer_weight_raw_09,layer_weight_raw_16,")
+        log_file.write(
+            "layer_weight_softmax_02,layer_weight_softmax_09,layer_weight_softmax_16,"
+        )
+        log_file.write(
+            "pool_02_weight_sigmoid,pool_09_weight_sigmoid,pool_16_weight_sigmoid,"
+        )
+
+        # conv1 and final_conv statistics
+        for layer_name in ["02", "09", "16"]:
+            log_file.write(
+                f"conv1_{layer_name}_min,conv1_{layer_name}_max,conv1_{layer_name}_mean,conv1_{layer_name}_std,"
+            )
+            log_file.write(
+                f"final_conv_{layer_name}_min,final_conv_{layer_name}_max,final_conv_{layer_name}_mean,final_conv_{layer_name}_std,"
+            )
 
     # Initialize models
     yolo_model.eval()  # Freeze YOLO weights
@@ -78,7 +102,7 @@ def train_perceptual_loss(
         data_path,
         batch_size,
         num_workers=os.cpu_count(),
-        seed=seed,
+        # seed=seed,
         modification_types=modification_types,
     )
 
@@ -115,7 +139,6 @@ def train_perceptual_loss(
         train_losses = []
         train_mean_error_score = []
         train_distances = []
-        train_norm_distances = []
 
         train_prog_bar = tqdm(
             train_loader,
@@ -138,7 +161,6 @@ def train_perceptual_loss(
             train_losses.append(loss)
             train_mean_error_score.append(error_score)
             train_distances.append(distance)
-            train_norm_distances.append(torch.sigmoid(torch.tensor(distance)).item())
 
         # Log training metrics
         avg_train_metrics = {
@@ -146,36 +168,55 @@ def train_perceptual_loss(
             "mean_error_score": sum(train_mean_error_score)
             / len(train_mean_error_score),
             "distance": sum(train_distances) / len(train_distances),
-            "norm_distance": sum(train_norm_distances) / len(train_norm_distances),
         }
 
         with open(train_log_path, "a") as log_file:
             log_file.write(
                 f"{epoch+1},{avg_train_metrics['loss']:.6f},"
-                f"{avg_train_metrics['mean_error_score']:.6f},{avg_train_metrics['distance']:.6f},"
-                f"{avg_train_metrics['norm_distance']:.6f}\n"
+                f"{avg_train_metrics['mean_error_score']:.6f},{avg_train_metrics['distance']:.6f}\n"
             )
 
         with open(weights_log_path, "a") as log_file:
-            feature_weights = yolo_similarity_model.layer_weights.detach().cpu().numpy()
-
-            lin_02_weights = yolo_similarity_model.lin_02.weight.detach().cpu().numpy()
-            lin_09_weights = yolo_similarity_model.lin_09.weight.detach().cpu().numpy()
-            lin_16_weights = yolo_similarity_model.lin_16.weight.detach().cpu().numpy()
-
+            # Layer weights
             log_file.write(f"{epoch+1},")
+
+            # Raw layer weights
+            feature_weights = yolo_similarity_model.layer_weights.detach().cpu().numpy()
             log_file.write(
                 f"{feature_weights[0]:.6f},{feature_weights[1]:.6f},{feature_weights[2]:.6f},"
             )
 
-            log_file.write(f"{lin_02_weights.min():.6f},{lin_02_weights.max():.6f},")
-            log_file.write(f"{lin_02_weights.mean():.6f},{lin_02_weights.std():.6f},")
+            # Norm weights
+            normalized_weights = feature_weights / feature_weights.sum()
+            log_file.write(
+                f"{normalized_weights[0]:.6f},{normalized_weights[1]:.6f},{normalized_weights[2]:.6f},"
+            )
 
-            log_file.write(f"{lin_09_weights.min():.6f},{lin_09_weights.max():.6f},")
-            log_file.write(f"{lin_09_weights.mean():.6f},{lin_09_weights.std():.6f},")
+            # Sigmoid pooling weights
+            log_file.write(
+                f"{torch.sigmoid(yolo_similarity_model.pool_02.weight).item():.6f},"
+                f"{torch.sigmoid(yolo_similarity_model.pool_09.weight).item():.6f},"
+                f"{torch.sigmoid(yolo_similarity_model.pool_16.weight).item():.6f},"
+            )
 
-            log_file.write(f"{lin_16_weights.min():.6f},{lin_16_weights.max():.6f},")
-            log_file.write(f"{lin_16_weights.mean():.6f},{lin_16_weights.std():.6f}\n")
+            # Conv layers stats
+            for process_block, layer_name in [
+                (yolo_similarity_model.process_02, "02"),
+                (yolo_similarity_model.process_09, "09"),
+                (yolo_similarity_model.process_16, "16"),
+            ]:
+                # conv1
+                conv1_stats = log_conv_stats(process_block.conv1)
+                log_file.write(
+                    f"{conv1_stats['min']:.6f},{conv1_stats['max']:.6f},{conv1_stats['mean']:.6f},{conv1_stats['std']:.6f},"
+                )
+
+                # final_conv
+                final_conv_stats = log_conv_stats(process_block.final_conv)
+                log_file.write(
+                    f"{final_conv_stats['min']:.6f},{final_conv_stats['max']:.6f},{final_conv_stats['mean']:.6f},{final_conv_stats['std']:.6f},"
+                )
+            log_file.write("\n")
 
         # Validation phase if needed
         if (epoch + 1) % val_frequency == 0:
@@ -183,7 +224,6 @@ def train_perceptual_loss(
             val_losses = []
             val_mean_error_score = []
             val_distances = []
-            val_norm_distances = []
 
             val_prog_bar = tqdm(
                 val_loader, desc=f"Epoch {epoch+1}/{num_epochs} (Val)", leave=False
@@ -203,9 +243,6 @@ def train_perceptual_loss(
                     val_losses.append(loss)
                     val_mean_error_score.append(error_score)
                     val_distances.append(distance)
-                    val_norm_distances.append(
-                        torch.sigmoid(torch.tensor(distance)).item()
-                    )
 
             # Log validation metrics
             avg_val_metrics = {
@@ -213,25 +250,21 @@ def train_perceptual_loss(
                 "mean_error_score": sum(val_mean_error_score)
                 / len(val_mean_error_score),
                 "distance": sum(val_distances) / len(val_distances),
-                "norm_distance": sum(val_norm_distances) / len(val_norm_distances),
             }
 
             with open(val_log_path, "a") as log_file:
                 log_file.write(
                     f"{epoch+1},{avg_val_metrics['loss']:.6f},"
-                    f"{avg_val_metrics['mean_error_score']:.6f},{avg_val_metrics['distance']:.6f},"
-                    f"{avg_val_metrics['norm_distance']:.6f}\n"
+                    f"{avg_val_metrics['mean_error_score']:.6f},{avg_val_metrics['distance']:.6f}\n"
                 )
 
             # Print current metrics
             print(f"\nEpoch {epoch+1}/{num_epochs}")
             print(
                 f"Train - Loss: {avg_train_metrics['loss']:.4f}, Error Score: {avg_train_metrics['mean_error_score']:.4f}, "
-                f"Norm Distance: {avg_train_metrics['norm_distance']:.4f}"
             )
             print(
                 f"Val   - Loss: {avg_val_metrics['loss']:.4f}, Error Score: {avg_val_metrics['mean_error_score']:.4f}, "
-                f"Norm Distance: {avg_val_metrics['norm_distance']:.4f}\n"
             )
 
             # Save best model and check for early stopping
@@ -258,8 +291,7 @@ def train_perceptual_loss(
             # Print only training metrics
             print(f"\nEpoch {epoch+1}/{num_epochs}")
             print(
-                f"Train - Loss: {avg_train_metrics['loss']:.4f}, Error Score: {avg_train_metrics['mean_error_score']:.4f}, "
-                f"Norm Distance: {avg_train_metrics['norm_distance']:.4f}\n"
+                f"Train - Loss: {avg_train_metrics['loss']:.4f}, Error Score: {avg_train_metrics['mean_error_score']:.4f}"
             )
     return {
         "model_path": os.path.join(run_output_dir, "best_model.pth"),
@@ -281,7 +313,7 @@ def process_batch(
 ) -> Tuple[float, float, float]:
     """
     Process a single batch (training or validation)
-    Returns loss, error_score and normalized distance for monitoring
+    Returns loss, error_score and distance for monitoring
     """
     gt_batch = batch["gt"].to(device)
     modified_batch = batch["modified"].to(device)
@@ -383,6 +415,7 @@ def test_perceptual_loss(
         data_path,
         batch_size,
         num_workers=os.cpu_count(),
+        modification_types=modification_types,
     )
 
     # Lists for storing results

@@ -32,7 +32,7 @@ def main():
     ]
 
     print(f"Testing model from run: {model_timestamp}")
-    print("Results will be saved with '_manual' suffix")
+    print("Results will be saved with '_manual' and '_compressed' suffix")
 
     test_perceptual_loss(
         yolo_model=yolo,
@@ -42,6 +42,7 @@ def main():
         output_dir=model_dir,
         layer_configs=layer_configs,
         manual_test=True,
+        modification_types=["compressed"],
     )
 
 

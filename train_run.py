@@ -6,7 +6,7 @@ def main():
     # Configuration
     config = {
         "num_epochs": 50,
-        "batch_size": 128,
+        "batch_size": 64,
         "learning_rate": 1e-4,
         "data_path": "dataset",
         "val_frequency": 5,

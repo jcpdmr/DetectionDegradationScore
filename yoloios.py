@@ -73,6 +73,30 @@ class MultiFeatureExtractor:
         return hooks
 
 
+class LearnablePooling(nn.Module):
+    """
+    Combines max and average pooling with a learnable weight.
+    The weight is passed through sigmoid to ensure it stays between 0 and 1,
+    effectively controlling the contribution of each pooling operation.
+    """
+
+    def __init__(self):
+        super().__init__()
+        # Initialize weight at 0.5 to give equal importance to both poolings initially
+        self.weight = nn.Parameter(torch.tensor([0.5]))
+
+    def forward(self, x):
+        # Compute both pooling operations
+        avg_pool = x.mean([2, 3], keepdim=True)
+        max_pool = torch.amax(x, dim=[2, 3], keepdim=True)
+
+        # Get weight between 0 and 1 using sigmoid
+        w = torch.sigmoid(self.weight)
+
+        # Weighted combination of the two pooling results
+        return w * max_pool + (1 - w) * avg_pool
+
+
 def extract_multiple_features_and_predictions(
     model: YOLO,
     images: torch.Tensor,
@@ -141,124 +165,116 @@ def extract_multiple_features_and_predictions(
             hook.remove()
 
 
+class SpatialProcessingBlock(nn.Module):
+    """
+    Processes spatial information in the difference map through convolutions.
+    Uses batch normalization and ReLU activations to improve training stability
+    and introduce non-linearity.
+    """
+
+    def __init__(self, in_channels):
+        super().__init__()
+        # First conv-bn-relu block
+        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(in_channels)
+
+        # Second conv-bn-relu block
+        self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(in_channels)
+
+        # Final 1x1 convolution to reduce channels to 1
+        self.final_conv = nn.Conv2d(in_channels, 1, kernel_size=1)
+
+    def forward(self, x):
+        # First spatial processing
+        x = F.relu(self.bn1(self.conv1(x)))
+
+        # Second spatial processing
+        x = F.relu(self.bn2(self.conv2(x)))
+
+        # Channel reduction
+        x = self.final_conv(x)
+        return x
+
+
 class YOLOSimilarity(nn.Module):
     """
-    Computes perceptual distance between feature maps extracted from two images using YOLO layers.
-    Implements a custom loss similar to LPIPS (Learned Perceptual Image Patch Similarity).
+    Computes perceptual distance between feature maps extracted from two images.
+    Uses spatial convolutions to analyze difference patterns and learnable pooling
+    to aggregate spatial information.
     """
 
     def __init__(self):
-        super(YOLOSimilarity, self).__init__()
+        super().__init__()
 
-        # Initialize 1x1 convolutional layers for channel weighting
-        # These reduce the channel dimension to 1 while learning weights
-        # for the importance of each input channel
-        self.lin_02 = nn.Conv2d(
-            256, 1, 1, stride=1, padding=0, bias=False
-        )  # Early features (layer 02)
-        self.lin_09 = nn.Conv2d(
-            512, 1, 1, stride=1, padding=0, bias=False
-        )  # SPPF features (layer 09)
-        self.lin_16 = nn.Conv2d(
-            256, 1, 1, stride=1, padding=0, bias=False
-        )  # Pre-detection features (layer 16)
+        # Spatial processing blocks for each YOLO layer
+        self.process_02 = SpatialProcessingBlock(256)  # Early features
+        self.process_09 = SpatialProcessingBlock(512)  # SPPF features
+        self.process_16 = SpatialProcessingBlock(256)  # Pre-detect features
 
-        # Initialize learnable weights for each layer's contribution using truncated normal
-        # This ensures values stay reasonably close to 1 while providing initial diversity
-        self.layer_weights = nn.Parameter(torch.empty(3))
-        nn.init.trunc_normal_(self.layer_weights, mean=1.0, std=0.2, a=0.6, b=1.4)
+        # Learnable pooling modules for each layer
+        self.pool_02 = LearnablePooling()
+        self.pool_09 = LearnablePooling()
+        self.pool_16 = LearnablePooling()
 
-        # Initialize all convolutional weights around 1.0
-        # This ensures equal initial contribution from all channels
-        self.lin_02.weight.data.normal_(mean=1.0, std=0.1)
-        self.lin_09.weight.data.normal_(mean=1.0, std=0.1)
-        self.lin_16.weight.data.normal_(mean=1.0, std=0.1)
+        # Weights for combining layer contributions
+        self.layer_weights = nn.Parameter(
+            torch.tensor([1 / 3, 1 / 3, 1 / 3], dtype=torch.float32)
+            + torch.randn(3) * 0.1  # Small random noise
+        )
+        # self.layer_weights = nn.Parameter(torch.zeros(3))
+        # nn.init.uniform_(self.layer_weights, a=-0.3, b=0.3)
+        # nn.init.trunc_normal_(self.layer_weights, mean=1.0, std=0.2, a=0.6, b=1.4)
 
-    def normalize_tensor(self, x: torch.Tensor, eps: float = 1e-10) -> torch.Tensor:
+    def compute_layer_distance(self, feat_a, feat_b, process_block, pool_block):
         """
-        Applies L2 normalization along channel dimension.
-
-        Args:
-            x: Input tensor of shape [batch, channels, height, width]
-            eps: Small constant to prevent division by zero
-
-        Returns:
-            Normalized tensor of same shape as input
+        Computes distance between feature maps from one layer using:
+        1. Squared difference
+        2. Spatial processing
+        3. Learnable pooling
         """
-        norm_factor = torch.sqrt(torch.sum(x**2, dim=1, keepdim=True))
-        return x / (norm_factor + eps)
-
-    def spatial_average(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Computes mean across spatial dimensions (height and width).
-
-        Args:
-            x: Input tensor of shape [batch, channels, height, width]
-
-        Returns:
-            Tensor of shape [batch, channels, 1, 1]
-        """
-        return x.mean([2, 3], keepdim=True)
-
-    def compute_layer_distance(
-        self, feat_a: torch.Tensor, feat_b: torch.Tensor, linear_layer: nn.Module
-    ) -> torch.Tensor:
-        """
-        Computes weighted distance between feature maps from one layer.
-
-        Args:
-            feat_a: Feature maps from first image
-            feat_b: Feature maps from second image
-            linear_layer: Convolutional layer for channel weighting
-
-        Returns:
-            Distance tensor of shape [batch, 1, 1, 1]
-        """
-        # Normalize features
-        norm_a = self.normalize_tensor(feat_a)
-        norm_b = self.normalize_tensor(feat_b)
-
         # Compute squared difference
-        diff = (norm_a - norm_b) ** 2
+        diff_map = (feat_a - feat_b) ** 2
 
-        # Apply channel weights and spatial averaging
-        return self.spatial_average(linear_layer(diff))
+        # Process difference map to analyze spatial patterns
+        processed_diff = process_block(diff_map)
 
-    def forward(self, features_a: dict, features_b: dict) -> torch.Tensor:
+        # Apply learnable pooling to get final layer distance
+        return pool_block(processed_diff)
+
+    def forward(self, features_a, features_b):
         """
-        Compute total perceptual distance between two sets of feature maps.
-
-        Args:
-            features_a: Dictionary of feature maps from first image
-            features_b: Dictionary of feature maps from second image
-
-        Returns:
-            Scalar distance value for each image in batch
+        Compute total perceptual distance between two sets of feature maps
+        using learned weights to combine individual layer distances.
         """
         # Compute distances for each layer
         d_02 = self.compute_layer_distance(
-            features_a["02_C3k2_early"], features_b["02_C3k2_early"], self.lin_02
+            features_a["02_C3k2_early"],
+            features_b["02_C3k2_early"],
+            self.process_02,
+            self.pool_02,
         )
 
         d_09 = self.compute_layer_distance(
-            features_a["09_SPPF"], features_b["09_SPPF"], self.lin_09
+            features_a["09_SPPF"], features_b["09_SPPF"], self.process_09, self.pool_09
         )
 
         d_16 = self.compute_layer_distance(
             features_a["16_C3k2_pre_detect"],
             features_b["16_C3k2_pre_detect"],
-            self.lin_16,
+            self.process_16,
+            self.pool_16,
         )
 
-        # Apply softmax to weights to ensure sum is 1 and they don't all go to 0 at the same time
-        normalized_weights = F.softmax(self.layer_weights, dim=0)
+        # Normalize layer weights using softmax
+        # normalized_weights = F.softmax(self.layer_weights, dim=0)
+        normalized_weights = self.layer_weights / self.layer_weights.sum()
 
-        # Combine distances using learned layer weights
+        # Weighted combination of layer distances
         total_distance = (
             normalized_weights[0] * d_02
             + normalized_weights[1] * d_09
             + normalized_weights[2] * d_16
         )
 
-        # Remove singleton dimensions and return
         return total_distance.squeeze()
