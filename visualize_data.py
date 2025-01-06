@@ -147,7 +147,7 @@ def create_interactive_analysis(data_path):
 
 def main():
     # Use the function
-    base_path = "output/20250105-164750_compressed"
+    base_path = "output/20250106-003734_compressed"
     file_name = "test_results_compressed.csv"
     fig = create_interactive_analysis(os.path.join(base_path, file_name))
     fig.show()

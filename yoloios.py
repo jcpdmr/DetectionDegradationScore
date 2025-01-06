@@ -275,6 +275,6 @@ class YOLOSimilarity(nn.Module):
             normalized_weights[0] * d_02
             + normalized_weights[1] * d_09
             + normalized_weights[2] * d_16
-        )
+        ) * 1000
 
         return total_distance.squeeze()

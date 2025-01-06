@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import os
 import time
 import torch
+import math
 import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
@@ -50,6 +51,7 @@ def train_perceptual_loss(
     train_log_path = os.path.join(run_output_dir, f"log_{timestamp}_trn.csv")
     val_log_path = os.path.join(run_output_dir, f"log_{timestamp}_val.csv")
     weights_log_path = os.path.join(run_output_dir, f"log_{timestamp}_weights.csv")
+    lr_log_path = os.path.join(run_output_dir, f"log_{timestamp}_lr.csv")
 
     with open(train_log_path, "w") as log_file:
         # Write header
@@ -89,6 +91,8 @@ def train_perceptual_loss(
 
         # Write header with csv join to avoid extra commas
         log_file.write(",".join(header) + "\n")
+    with open(lr_log_path, "w") as log_file:  # New LR log initialization
+        log_file.write("epoch,learning_rate\n")
 
     # Initialize models
     yolo_model.eval()  # Freeze YOLO weights
@@ -121,10 +125,66 @@ def train_perceptual_loss(
         f.write(f"Validation frequency: {val_frequency}\n")
         f.write(f"Early stopping patience: {patience}\n")
 
+    # Calculate warmup steps and total steps
+    num_warmup_epochs = int(num_epochs * 0.1)  # 10% of total epochs for warmup
+
+    # Setup optimizer with weight decay separation
+    no_decay = ["bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p
+                for n, p in yolo_similarity_model.named_parameters()
+                if not any(nd in n for nd in no_decay)
+            ],
+            "weight_decay": 0.01,
+        },
+        {
+            "params": [
+                p
+                for n, p in yolo_similarity_model.named_parameters()
+                if any(nd in n for nd in no_decay)
+            ],
+            "weight_decay": 0.0,
+        },
+    ]
+
+    optimizer = torch.optim.AdamW(
+        optimizer_grouped_parameters, lr=learning_rate, betas=(0.9, 0.999), eps=1e-8
+    )
+
+    # Learning rate scheduler with warmup
+    class WarmupCosineSchedule:
+        def __init__(self, optimizer, warmup_epochs, total_epochs):
+            self.optimizer = optimizer
+            self.warmup_epochs = warmup_epochs
+            self.total_epochs = total_epochs
+            self.current_epoch = 0
+
+        def step(self):
+            self.current_epoch += 1
+            if self.current_epoch <= self.warmup_epochs:
+                # Linear warmup
+                lr_scale = self.current_epoch / max(1, self.warmup_epochs)
+            else:
+                # Cosine decay
+                progress = (self.current_epoch - self.warmup_epochs) / max(
+                    1, self.total_epochs - self.warmup_epochs
+                )
+                lr_scale = max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
+
+            # Update learning rate
+            for param_group in self.optimizer.param_groups:
+                param_group["lr"] = learning_rate * lr_scale
+
+        def get_last_lr(self):
+            return [group["lr"] for group in self.optimizer.param_groups]
+
+    scheduler = WarmupCosineSchedule(optimizer, num_warmup_epochs, num_epochs)
+
     # Setup training
-    optimizer = torch.optim.Adam(yolo_similarity_model.parameters(), lr=learning_rate)
-    # loss_criterion = nn.MSELoss()
-    loss_criterion = nn.L1Loss()
+    loss_criterion = nn.MSELoss()
+    # loss_criterion = nn.L1Loss()
     layer_configs = [
         LayerConfig(2, "02_C3k2_early"),
         LayerConfig(9, "09_SPPF"),
@@ -165,6 +225,13 @@ def train_perceptual_loss(
             train_losses.append(loss)
             train_mean_error_score.append(error_score)
             train_distances.append(distance)
+        # Step the scheduler after each epoch
+        scheduler.step()
+
+        # Log the learning rate
+        current_lr = scheduler.get_last_lr()[0]
+        with open(lr_log_path, "a") as log_file:
+            log_file.write(f"{epoch+1},{current_lr:.8f}\n")
 
         # Log training metrics
         avg_train_metrics = {
@@ -255,6 +322,7 @@ def train_perceptual_loss(
         else:
             # Print only training metrics
             print(f"\nEpoch {epoch+1}/{num_epochs}")
+            print(f"Learning Rate: {current_lr:.8f}")
             print(
                 f"Train - Loss: {avg_train_metrics['loss']:.4f}, Error Score: {avg_train_metrics['mean_error_score']:.4f}"
             )
@@ -424,13 +492,13 @@ def test_perceptual_loss(
 
         # Overall statistics
         correlation = np.corrcoef(similarities, error_scores)[0, 1]
-        # mse = np.mean((np.array(similarities) - np.array(error_scores)) ** 2)
-        mae = np.mean(np.abs(np.array(similarities) - np.array(error_scores)))
+        mse = np.mean((np.array(similarities) - np.array(error_scores)) ** 2)
+        # mae = np.mean(np.abs(np.array(similarities) - np.array(error_scores)))
 
         f.write("Overall Statistics:\n")
         f.write(f"Total images tested: {len(similarities)}\n")
         f.write(f"Correlation coefficient: {correlation:.4f}\n")
-        f.write(f"MAE(similarites-error scores): {mae:.4f}\n\n")
+        f.write(f"MSE(similarites-error scores): {mse:.4f}\n\n")
 
         # Per-modification type statistics
         f.write("Statistics by Modification Type:\n")
@@ -439,7 +507,8 @@ def test_perceptual_loss(
             mod_sims = np.array(similarities)[mask]
             mod_errs = np.array(error_scores)[mask]
 
-            mod_mae = np.mean(np.abs(mod_sims - mod_errs))
+            # mod_mae = np.mean(np.abs(mod_sims - mod_errs))
+            mod_mse = np.mean((mod_sims - mod_errs) ** 2)
 
             f.write(f"\n{mod_type.upper()}:\n")
             f.write(f"Count: {len(mod_sims)}\n")
@@ -448,13 +517,13 @@ def test_perceptual_loss(
             f.write(
                 f"Correlation coefficient: {np.corrcoef(mod_sims, mod_errs)[0,1]:.4f}\n"
             )
-            f.write(f"MAE(similarites-error scores): {mod_mae:.4f}\n")
+            f.write(f"MSE(similarites-error scores): {mod_mse:.4f}\n")
 
     return {
         "similarities": similarities,
         "error_scores": error_scores,
         "correlation": correlation,
-        "mae": mae,
+        "mse": mse,
     }
 
 
