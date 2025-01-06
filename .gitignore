@@ -3,6 +3,10 @@ yolo*.pt
 output/
 __pycache__/
 dataset/
+dataset_attention/
+feature_extracted_attention/
+wandb/
+checkpoints/
 prediction_results
 videos/
 draw/

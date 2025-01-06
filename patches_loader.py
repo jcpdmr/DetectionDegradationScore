@@ -1,115 +1,125 @@
 import os
-import random
 import cv2
 import torch
 from torchvision import transforms
 from torch.utils.data import Dataset, DataLoader
-from typing import Optional, List, Tuple
+from typing import Optional, Tuple, Dict
 from pathlib import Path
+import json
 
 
-class PatchesDataset(Dataset):
+class EnhancedPatchesDataset(Dataset):
     """
-    Dataset class for loading image pairs from pre-split directories.
-    Handles ground truth images and their modified versions (compressed/distorted).
+    Dataset class that loads image pairs along with their precomputed error scores.
+    Handles loading from the organized directory structure where each split has
+    its own error_scores.json file.
     """
 
     def __init__(
         self,
         root_path: str,
         split: str,
-        modification_types: Optional[List[str]] = None,
         transform: Optional[transforms.Compose] = None,
     ):
         """
-        Initialize dataset from a specific split directory
+        Initialize the enhanced dataset with automatic score loading.
+        Each split directory should contain an error_scores.json file.
 
         Args:
-            root_path: Root directory containing all splits
-            split: Dataset split to use ('train', 'val', or 'test')
-            modification_types: List of modification types to include
-            transform: Optional transforms to apply to images
+            root_path: Base directory containing split folders
+            split: Dataset split ('train', 'val', or 'test')
+            transform: Optional transforms to apply to the images
         """
-        # Validate split type
+        # Validate split name
         if split not in ["train", "val", "test"]:
             raise ValueError("Split must be one of: 'train', 'val', 'test'")
 
-        # Setup paths for this split
+        # Setup paths
         self.split_path = Path(root_path) / split
         self.gt_path = self.split_path / "extracted"
-
-        # Setup modification types (default to both if not specified)
-        self.mod_types = modification_types or ["distorted", "compressed"]
-        self.mod_paths = {
-            mod_type: self.split_path / mod_type for mod_type in self.mod_types
-        }
-
-        # Store transform
+        self.mod_path = self.split_path / "compressed"
+        self.scores_path = self.split_path / "error_scores.json"
         self.transform = transform
 
-        # Verify directory structure
+        # Verify directory structure and load scores
         self._verify_directories()
+        self._load_scores()
 
-        # Get list of images (only need to check ground truth directory)
+        # Get list of valid image files
         self.image_names = sorted(
             [
                 f
                 for f in os.listdir(self.gt_path)
                 if f.lower().endswith((".jpg", ".jpeg", ".png"))
+                and f in self.scores  # Only include images that have scores
             ]
         )
 
         if not self.image_names:
-            raise RuntimeError(f"No images found in {self.gt_path}")
+            raise RuntimeError(f"No valid images found in {self.gt_path}")
 
     def _verify_directories(self) -> None:
         """
-        Verify that all required directories exist and contain matching files
+        Verify that all required directories and files exist.
+        Raises appropriate errors if anything is missing.
         """
         if not self.gt_path.exists():
             raise RuntimeError(f"Ground truth directory not found: {self.gt_path}")
+        if not self.mod_path.exists():
+            raise RuntimeError(f"Modified images directory not found: {self.mod_path}")
+        if not self.scores_path.exists():
+            raise RuntimeError(
+                f"Error scores file not found: {self.scores_path}\n"
+                "Please run the score calculation script first."
+            )
 
-        for mod_type, path in self.mod_paths.items():
-            if not path.exists():
-                raise RuntimeError(f"{mod_type} directory not found: {path}")
+    def _load_scores(self) -> None:
+        """
+        Load error scores from the JSON file.
+        Stores them in a dictionary mapping image names to scores.
+        """
+        try:
+            with open(self.scores_path, "r") as f:
+                self.scores = json.load(f)
+        except json.JSONDecodeError:
+            raise RuntimeError(f"Invalid JSON file: {self.scores_path}")
+        except Exception as e:
+            raise RuntimeError(f"Error loading scores: {str(e)}")
 
     def __len__(self) -> int:
-        """Return the total number of image pairs in this split"""
+        """Return the number of valid image pairs with scores"""
         return len(self.image_names)
 
-    def __getitem__(self, idx: int) -> dict:
+    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
-        Get a single image pair (ground truth and modified)
-
-        Args:
-            idx: Index of the image pair to fetch
+        Get a single image pair and its error score.
 
         Returns:
             Dictionary containing:
-                - gt: Ground truth image tensor
-                - modified: Modified image tensor
+                - gt: Ground truth image tensor [3, H, W]
+                - modified: Modified image tensor [3, H, W]
+                - score: Error score tensor [1]
                 - name: Image filename
-                - mod_type: Type of modification applied
         """
         img_name = self.image_names[idx]
 
-        # Load ground truth image
+        # Load images
         gt_img = load_image_for_yolo(self.gt_path / img_name)
+        modified_img = load_image_for_yolo(self.mod_path / img_name)
 
-        # Randomly choose modification type (for training variety)
-        mod_type = random.choice(self.mod_types)
-        modified_img = load_image_for_yolo(self.mod_paths[mod_type] / img_name)
-
-        # Apply any additional transforms if specified
+        # Apply transforms if specified
         if self.transform:
             gt_img = self.transform(gt_img)
             modified_img = self.transform(modified_img)
 
+        # Get score for this pair
+        score = torch.tensor(self.scores[img_name], dtype=torch.float32)
+
         return {
             "gt": gt_img,
             "modified": modified_img,
+            "score": score,
             "name": img_name,
-            "mod_type": mod_type,
         }
 
 
@@ -117,61 +127,37 @@ def create_dataloaders(
     root_path: str,
     batch_size: int,
     num_workers: int = 4,
-    modification_types: Optional[List[str]] = None,
     transform: Optional[transforms.Compose] = None,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
-    Create train, validation and test dataloaders
+    Create dataloaders for train, validation, and test sets.
+    Each split must have its corresponding error_scores.json file.
 
     Args:
-        root_path: Root directory containing split folders
+        root_path: Root directory containing the split folders
         batch_size: Batch size for the dataloaders
-        num_workers: Number of worker processes for data loading
-        modification_types: List of modification types to include
+        num_workers: Number of worker processes for loading
         transform: Optional transforms to apply to images
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
     """
-    # Create datasets for each split
-    train_dataset = PatchesDataset(
-        root_path, "train", modification_types=modification_types, transform=transform
-    )
+    loaders = {}
 
-    val_dataset = PatchesDataset(
-        root_path, "val", modification_types=modification_types, transform=transform
-    )
+    for split in ["train", "val", "test"]:
+        dataset = EnhancedPatchesDataset(
+            root_path=root_path, split=split, transform=transform
+        )
 
-    test_dataset = PatchesDataset(
-        root_path, "test", modification_types=modification_types, transform=transform
-    )
+        loaders[split] = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            shuffle=(split == "train"),  # Shuffle only training data
+            num_workers=num_workers,
+            pin_memory=True,
+        )
 
-    # Create dataloaders with appropriate settings
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,  # Shuffle training data
-        num_workers=num_workers,
-        pin_memory=True,  # Faster data transfer to GPU
-    )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,  # No need to shuffle validation
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-
-    test_loader = DataLoader(
-        test_dataset,
-        batch_size=batch_size,
-        shuffle=False,  # No need to shuffle test
-        num_workers=num_workers,
-        pin_memory=True,
-    )
-
-    return train_loader, val_loader, test_loader
+    return loaders["train"], loaders["val"], loaders["test"]
 
 
 def load_image_for_yolo(image_path: str) -> torch.Tensor:

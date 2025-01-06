@@ -116,11 +116,11 @@ def process_image(args):
 def main():
     # Configuration
     INPUT_DIR = "../train2017"
-    OUTPUT_DIR = "dataset"
+    OUTPUT_DIR = "dataset_attention"
     TARGET_SIZE = 384  # Target size for the square patches
     MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
     NUM_WORKERS = os.cpu_count()  # Use all available CPU cores
-    MAX_IMAGES = 60000  # Maximum number of images to process
+    MAX_IMAGES = 15000  # Maximum number of images to process
 
     # Create directory structure
     create_split_directories(OUTPUT_DIR)

@@ -229,4 +229,4 @@ def calculate_quality_score(matches: List[Dict], num_gt: int, num_mod: int) -> f
     # Convert to error score where:
     # 0 = perfect match (all objects detected with perfect IoU and confidence)
     # 1 = complete mismatch (no valid matches found)
-    return (1.0 - quality_score) * 1000
+    return 1.0 - quality_score

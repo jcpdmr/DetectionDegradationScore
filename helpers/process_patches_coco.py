@@ -124,7 +124,7 @@ def process_split(split_name, base_path):
 
 
 def main():
-    BASE_PATH = "dataset"  # Changed from patches to dataset
+    BASE_PATH = "dataset_attention"
     splits = ["train", "val", "test"]
 
     total_successful = 0
