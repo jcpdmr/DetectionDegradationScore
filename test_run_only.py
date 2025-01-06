@@ -10,7 +10,7 @@ def main():
     The timestamp is hardcoded for easy reference to specific training runs.
     """
     # Hardcoded timestamp from the training run we want to test
-    model_timestamp = "20250103-213742"
+    model_timestamp = "20250105-164750_compressed"
 
     # Derive paths from timestamp
     base_output_dir = "output"
@@ -19,7 +19,7 @@ def main():
 
     # Configuration
     dataset_root = "dataset"
-    batch_size = 128
+    batch_size = 64
 
     # Initialize YOLO model
     yolo = YOLO("yolo11m.pt", verbose=False)

@@ -7,10 +7,10 @@ def main():
     config = {
         "num_epochs": 50,
         "batch_size": 64,
-        "learning_rate": 1e-4,
+        "learning_rate": 1e-5,
         "data_path": "dataset",
         "val_frequency": 5,
-        "patience": 10,
+        "patience": 4,
         "output_dir": "output",
         "seed": 100,
         "modification_types": ["compressed"],
@@ -38,7 +38,7 @@ def main():
     # Print final test results
     print("\nTest Results:")
     print(f"Correlation with error scores: {test_results['correlation']:.4f}")
-    print(f"MSE(similarites-error scores): {test_results['mse']:.4f}")
+    print(f"MAE(similarites-error scores): {test_results['mae']:.4f}")
 
 
 if __name__ == "__main__":

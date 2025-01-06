@@ -15,16 +15,6 @@ from yoloios import (
 )
 
 
-def log_conv_stats(conv_layer):
-    weights = conv_layer.weight.detach().cpu().numpy()
-    return {
-        "min": weights.min(),
-        "max": weights.max(),
-        "mean": weights.mean(),
-        "std": weights.std(),
-    }
-
-
 def train_perceptual_loss(
     yolo_model: YOLO,
     num_epochs: int,
@@ -69,23 +59,36 @@ def train_perceptual_loss(
         log_file.write("epoch,loss,avg_error_score,avg_distance\n")
     with open(weights_log_path, "w") as log_file:
         # Weights header
-        log_file.write("epoch,")
-        log_file.write("layer_weight_raw_02,layer_weight_raw_09,layer_weight_raw_16,")
-        log_file.write(
-            "layer_weight_softmax_02,layer_weight_softmax_09,layer_weight_softmax_16,"
-        )
-        log_file.write(
-            "pool_02_weight_sigmoid,pool_09_weight_sigmoid,pool_16_weight_sigmoid,"
-        )
+        header = [
+            "epoch",
+            "layer_weight_raw_02",
+            "layer_weight_raw_09",
+            "layer_weight_raw_16",
+            "layer_weight_softmax_02",
+            "layer_weight_softmax_09",
+            "layer_weight_softmax_16",
+            "pool_02_weight_sigmoid",
+            "pool_09_weight_sigmoid",
+            "pool_16_weight_sigmoid",
+        ]
 
         # conv1 and final_conv statistics
         for layer_name in ["02", "09", "16"]:
-            log_file.write(
-                f"conv1_{layer_name}_min,conv1_{layer_name}_max,conv1_{layer_name}_mean,conv1_{layer_name}_std,"
+            header.extend(
+                [
+                    f"conv1_{layer_name}_min",
+                    f"conv1_{layer_name}_max",
+                    f"conv1_{layer_name}_mean",
+                    f"conv1_{layer_name}_std",
+                    f"final_conv_{layer_name}_min",
+                    f"final_conv_{layer_name}_max",
+                    f"final_conv_{layer_name}_mean",
+                    f"final_conv_{layer_name}_std",
+                ]
             )
-            log_file.write(
-                f"final_conv_{layer_name}_min,final_conv_{layer_name}_max,final_conv_{layer_name}_mean,final_conv_{layer_name}_std,"
-            )
+
+        # Write header with csv join to avoid extra commas
+        log_file.write(",".join(header) + "\n")
 
     # Initialize models
     yolo_model.eval()  # Freeze YOLO weights
@@ -120,7 +123,8 @@ def train_perceptual_loss(
 
     # Setup training
     optimizer = torch.optim.Adam(yolo_similarity_model.parameters(), lr=learning_rate)
-    mse_criterion = nn.MSELoss()
+    # loss_criterion = nn.MSELoss()
+    loss_criterion = nn.L1Loss()
     layer_configs = [
         LayerConfig(2, "02_C3k2_early"),
         LayerConfig(9, "09_SPPF"),
@@ -153,7 +157,7 @@ def train_perceptual_loss(
                 yolo_similarity_model,
                 batch,
                 layer_configs,
-                mse_criterion,
+                loss_criterion,
                 device,
                 optimizer,
                 training=True,
@@ -177,46 +181,7 @@ def train_perceptual_loss(
             )
 
         with open(weights_log_path, "a") as log_file:
-            # Layer weights
-            log_file.write(f"{epoch+1},")
-
-            # Raw layer weights
-            feature_weights = yolo_similarity_model.layer_weights.detach().cpu().numpy()
-            log_file.write(
-                f"{feature_weights[0]:.6f},{feature_weights[1]:.6f},{feature_weights[2]:.6f},"
-            )
-
-            # Norm weights
-            normalized_weights = feature_weights / feature_weights.sum()
-            log_file.write(
-                f"{normalized_weights[0]:.6f},{normalized_weights[1]:.6f},{normalized_weights[2]:.6f},"
-            )
-
-            # Sigmoid pooling weights
-            log_file.write(
-                f"{torch.sigmoid(yolo_similarity_model.pool_02.weight).item():.6f},"
-                f"{torch.sigmoid(yolo_similarity_model.pool_09.weight).item():.6f},"
-                f"{torch.sigmoid(yolo_similarity_model.pool_16.weight).item():.6f},"
-            )
-
-            # Conv layers stats
-            for process_block, layer_name in [
-                (yolo_similarity_model.process_02, "02"),
-                (yolo_similarity_model.process_09, "09"),
-                (yolo_similarity_model.process_16, "16"),
-            ]:
-                # conv1
-                conv1_stats = log_conv_stats(process_block.conv1)
-                log_file.write(
-                    f"{conv1_stats['min']:.6f},{conv1_stats['max']:.6f},{conv1_stats['mean']:.6f},{conv1_stats['std']:.6f},"
-                )
-
-                # final_conv
-                final_conv_stats = log_conv_stats(process_block.final_conv)
-                log_file.write(
-                    f"{final_conv_stats['min']:.6f},{final_conv_stats['max']:.6f},{final_conv_stats['mean']:.6f},{final_conv_stats['std']:.6f},"
-                )
-            log_file.write("\n")
+            log_weights_and_stats(log_file, epoch, yolo_similarity_model)
 
         # Validation phase if needed
         if (epoch + 1) % val_frequency == 0:
@@ -236,7 +201,7 @@ def train_perceptual_loss(
                         yolo_similarity_model,
                         batch,
                         layer_configs,
-                        mse_criterion,
+                        loss_criterion,
                         device,
                         training=False,
                     )
@@ -306,7 +271,7 @@ def process_batch(
     yolo_similarity_model: YOLOSimilarity,
     batch: Dict[str, torch.Tensor],
     layer_configs: list,
-    mse_criterion: nn.Module,
+    loss_criterion: nn.Module,
     device: torch.device,
     optimizer: torch.optim.Optimizer = None,
     training: bool = True,
@@ -334,7 +299,7 @@ def process_batch(
     error_scores = torch.as_tensor([m["error_score"] for m in matches]).to(device)
 
     # Compute loss directly between distances and error scores
-    loss = mse_criterion(distances, error_scores)
+    loss = loss_criterion(distances, error_scores)
 
     # Backpropagation if in training mode
     if training and optimizer is not None:
@@ -343,38 +308,6 @@ def process_batch(
         optimizer.step()
 
     return loss.item(), error_scores.mean().item(), distances.mean().item()
-
-
-def visualize_batch(batch, save_path="batch_visualization.png"):
-    """
-    Visualize a batch of image pairs
-
-    Args:
-        batch: Batch from dataloader
-        save_path: Where to save the visualization
-    """
-    import matplotlib.pyplot as plt
-
-    gt_batch = batch["gt"]
-    modified_batch = batch["modified"]
-    names = batch["name"]
-
-    batch_size = 4
-    fig, axes = plt.subplots(batch_size, 2, figsize=(10, 5 * batch_size))
-
-    for idx in range(batch_size):
-        # Convert tensors to numpy arrays and transpose to HWC format
-        gt_img = gt_batch[idx].permute(1, 2, 0).numpy()
-        mod_img = modified_batch[idx].permute(1, 2, 0).numpy()
-
-        axes[idx, 0].imshow(gt_img)
-        axes[idx, 0].set_title(f"GT: {names[idx]}")
-        axes[idx, 1].imshow(mod_img)
-        axes[idx, 1].set_title(f"Modified: {names[idx]}")
-
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
 
 
 def test_perceptual_loss(
@@ -491,12 +424,13 @@ def test_perceptual_loss(
 
         # Overall statistics
         correlation = np.corrcoef(similarities, error_scores)[0, 1]
-        mse = np.mean((np.array(similarities) - np.array(error_scores)) ** 2)
+        # mse = np.mean((np.array(similarities) - np.array(error_scores)) ** 2)
+        mae = np.mean(np.abs(np.array(similarities) - np.array(error_scores)))
 
         f.write("Overall Statistics:\n")
         f.write(f"Total images tested: {len(similarities)}\n")
         f.write(f"Correlation coefficient: {correlation:.4f}\n")
-        f.write(f"MSE(similarites-error scores): {mse:.4f}\n\n")
+        f.write(f"MAE(similarites-error scores): {mae:.4f}\n\n")
 
         # Per-modification type statistics
         f.write("Statistics by Modification Type:\n")
@@ -505,7 +439,7 @@ def test_perceptual_loss(
             mod_sims = np.array(similarities)[mask]
             mod_errs = np.array(error_scores)[mask]
 
-            mod_mse = np.mean((mod_sims - mod_errs) ** 2)
+            mod_mae = np.mean(np.abs(mod_sims - mod_errs))
 
             f.write(f"\n{mod_type.upper()}:\n")
             f.write(f"Count: {len(mod_sims)}\n")
@@ -514,11 +448,112 @@ def test_perceptual_loss(
             f.write(
                 f"Correlation coefficient: {np.corrcoef(mod_sims, mod_errs)[0,1]:.4f}\n"
             )
-            f.write(f"MSE(similarites-error scores): {mod_mse:.4f}\n")
+            f.write(f"MAE(similarites-error scores): {mod_mae:.4f}\n")
 
     return {
         "similarities": similarities,
         "error_scores": error_scores,
         "correlation": correlation,
-        "mse": mse,
+        "mae": mae,
     }
+
+
+def log_conv_stats(conv_layer):
+    weights = conv_layer.weight.detach().cpu().numpy()
+    return {
+        "min": weights.min(),
+        "max": weights.max(),
+        "mean": weights.mean(),
+        "std": weights.std(),
+    }
+
+
+def log_weights_and_stats(log_file, epoch, yolo_similarity_model):
+    """
+    Log weights and statistics to CSV, ensuring proper CSV formatting.
+    Each line should end without a comma.
+    """
+    # Prepare all values in a list first
+    values = []
+
+    # Add epoch
+    values.append(f"{epoch+1}")
+
+    # Raw layer weights
+    feature_weights = yolo_similarity_model.layer_weights.detach().cpu().numpy()
+    values.extend([f"{w:.6f}" for w in feature_weights])
+
+    # Normalized weights
+    normalized_weights = feature_weights / feature_weights.sum()
+    values.extend([f"{w:.6f}" for w in normalized_weights])
+
+    # Sigmoid pooling weights
+    pool_weights = [
+        torch.sigmoid(yolo_similarity_model.pool_02.weight).item(),
+        torch.sigmoid(yolo_similarity_model.pool_09.weight).item(),
+        torch.sigmoid(yolo_similarity_model.pool_16.weight).item(),
+    ]
+    values.extend([f"{w:.6f}" for w in pool_weights])
+
+    # Conv layers stats
+    for process_block, layer_name in [
+        (yolo_similarity_model.process_02, "02"),
+        (yolo_similarity_model.process_09, "09"),
+        (yolo_similarity_model.process_16, "16"),
+    ]:
+        # conv1
+        conv1_stats = log_conv_stats(process_block.conv1)
+        values.extend(
+            [
+                f"{conv1_stats['min']:.6f}",
+                f"{conv1_stats['max']:.6f}",
+                f"{conv1_stats['mean']:.6f}",
+                f"{conv1_stats['std']:.6f}",
+            ]
+        )
+
+        # final_conv
+        final_conv_stats = log_conv_stats(process_block.final_conv)
+        values.extend(
+            [
+                f"{final_conv_stats['min']:.6f}",
+                f"{final_conv_stats['max']:.6f}",
+                f"{final_conv_stats['mean']:.6f}",
+                f"{final_conv_stats['std']:.6f}",
+            ]
+        )
+
+    # Join all values with commas and write the line
+    log_file.write(",".join(values) + "\n")
+
+
+def visualize_batch(batch, save_path="batch_visualization.png"):
+    """
+    Visualize a batch of image pairs
+
+    Args:
+        batch: Batch from dataloader
+        save_path: Where to save the visualization
+    """
+    import matplotlib.pyplot as plt
+
+    gt_batch = batch["gt"]
+    modified_batch = batch["modified"]
+    names = batch["name"]
+
+    batch_size = 4
+    fig, axes = plt.subplots(batch_size, 2, figsize=(10, 5 * batch_size))
+
+    for idx in range(batch_size):
+        # Convert tensors to numpy arrays and transpose to HWC format
+        gt_img = gt_batch[idx].permute(1, 2, 0).numpy()
+        mod_img = modified_batch[idx].permute(1, 2, 0).numpy()
+
+        axes[idx, 0].imshow(gt_img)
+        axes[idx, 0].set_title(f"GT: {names[idx]}")
+        axes[idx, 1].imshow(mod_img)
+        axes[idx, 1].set_title(f"Modified: {names[idx]}")
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.close()
