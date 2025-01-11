@@ -215,7 +215,7 @@ def calculate_quality_score(matches: List[Dict], num_gt: int, num_mod: int) -> f
 
         # Calculate confidence quality using the ratio
         # Note: we know classes match because of the new matching system
-        conf_quality = min(match["gt_score"] / match["mod_score"], 1.0)
+        conf_quality = min(match["mod_score"] / match["gt_score"], 1.0)
 
         # Combine IoU and confidence qualities
         match_quality = iou_quality * conf_quality

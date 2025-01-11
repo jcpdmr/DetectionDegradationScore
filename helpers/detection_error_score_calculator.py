@@ -10,7 +10,7 @@ from ultralytics import YOLO
 import shutil
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from patches_loader import create_dataloaders
+from dataloader import create_dataloaders
 from score_metrics import match_predictions
 from extractor import load_feature_extractor
 
@@ -56,7 +56,9 @@ class EnhancedBatchCalculator:
         directory.mkdir(parents=True, exist_ok=True)
 
     def process_batch(
-        self, gt_images: torch.Tensor, mod_images: torch.Tensor
+        self,
+        gt_images: torch.Tensor,
+        mod_images: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Process a batch of image pairs to get scores and features
@@ -102,6 +104,7 @@ class EnhancedBatchCalculator:
             feat_np = feat.cpu().numpy()
             feat_path = output_dir / f"{Path(name).stem}.npy"
             np.save(feat_path, feat_np)
+            # np.savez_compressed(feat_path, feat_np)
 
     def process_split(
         self,
@@ -135,7 +138,7 @@ class EnhancedBatchCalculator:
         # Process all batches
         for batch in tqdm(dataloader, desc=f"Processing {split_name} split"):
             gt_images = batch["gt"].to(self.device)
-            mod_images = batch["modified"].to(self.device)
+            mod_images = batch["compressed"].to(self.device)
             names = batch["name"]
 
             # Get scores and features
@@ -169,7 +172,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     DATA_ROOT = "dataset_attention"
     FEATURES_ROOT = "feature_extracted_attention"
-    BATCH_SIZE = 64
+    BATCH_SIZE = 128
     MODEL_PATH = "../yolo11m.pt"
 
     print(f"Using device: {device}")
@@ -188,7 +191,7 @@ def main():
 
     # Create dataloaders
     train_loader, val_loader, test_loader = create_dataloaders(
-        root_path=DATA_ROOT, batch_size=BATCH_SIZE
+        dataset_root=DATA_ROOT, batch_size=BATCH_SIZE
     )
 
     # Process each split

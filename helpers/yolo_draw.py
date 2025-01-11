@@ -116,41 +116,41 @@ def process_image_pairs(model, image_list, base_dirs, output_dirs):
                 }
             )
 
-        # Process and compare distorted image
-        dist_path = os.path.join(base_dirs["distorted"], img_name)
-        if os.path.exists(dist_path):
-            dist_image = cv2.imread(dist_path)
-            dist_results = model(dist_image)
-            draw_predictions(
-                dist_image,
-                dist_results,
-                os.path.join(output_dirs["distorted"], img_name),
-            )
+        # # Process and compare distorted image
+        # dist_path = os.path.join(base_dirs["distorted"], img_name)
+        # if os.path.exists(dist_path):
+        #     dist_image = cv2.imread(dist_path)
+        #     dist_results = model(dist_image)
+        #     draw_predictions(
+        #         dist_image,
+        #         dist_results,
+        #         os.path.join(output_dirs["distorted"], img_name),
+        #     )
 
-            # Calculate quality score for distorted
-            dist_matches = match_predictions([gt_results[0]], [dist_results[0]])
-            metrics["distorted"].append(
-                {
-                    "image": img_name,
-                    "error_score": float(
-                        dist_matches[0]["error_score"]
-                    ),  # Convert tensor to float
-                    "num_matches": len(dist_matches[0]["matches"]),
-                    "num_gt": int(dist_matches[0]["num_gt"]),  # Convert to int
-                    "num_pred": int(dist_matches[0]["num_mod"]),  # Convert to int
-                    "matches": [  # Convert match details to standard Python types
-                        {
-                            "mod_idx": int(match["mod_idx"]),
-                            "gt_idx": int(match["gt_idx"]),
-                            "iou": float(match["iou"]),
-                            "class": int(match["class"]),
-                            "gt_score": float(match["gt_score"]),
-                            "mod_score": float(match["mod_score"]),
-                        }
-                        for match in dist_matches[0]["matches"]
-                    ],
-                }
-            )
+        #     # Calculate quality score for distorted
+        #     dist_matches = match_predictions([gt_results[0]], [dist_results[0]])
+        #     metrics["distorted"].append(
+        #         {
+        #             "image": img_name,
+        #             "error_score": float(
+        #                 dist_matches[0]["error_score"]
+        #             ),  # Convert tensor to float
+        #             "num_matches": len(dist_matches[0]["matches"]),
+        #             "num_gt": int(dist_matches[0]["num_gt"]),  # Convert to int
+        #             "num_pred": int(dist_matches[0]["num_mod"]),  # Convert to int
+        #             "matches": [  # Convert match details to standard Python types
+        #                 {
+        #                     "mod_idx": int(match["mod_idx"]),
+        #                     "gt_idx": int(match["gt_idx"]),
+        #                     "iou": float(match["iou"]),
+        #                     "class": int(match["class"]),
+        #                     "gt_score": float(match["gt_score"]),
+        #                     "mod_score": float(match["mod_score"]),
+        #                 }
+        #                 for match in dist_matches[0]["matches"]
+        #             ],
+        #         }
+        #     )
 
     return metrics
 
@@ -159,12 +159,12 @@ def analyze_metrics(metrics):
     """
     Analyze and print summary statistics for the quality scores.
     """
-    for category in ["compressed", "distorted"]:
+    for category in ["compressed"]:
         if metrics[category]:
             # Convert to float
             scores = [float(m["error_score"]) for m in metrics[category]]
             print(f"\n{category} images analysis:")
-            print(f"Average score: {sum(scores)/len(scores):.3f}")
+            print(f"Average score: {sum(scores) / len(scores):.3f}")
             print(f"Best score: {min(scores):.3f}")
             print(f"Worst score: {max(scores):.3f}")
 
@@ -189,21 +189,21 @@ def main():
         "000000000321.jpg",
         "000000000400.jpg",
         "000000000419.jpg",
-        "000000000634.jpg",
+        "000000000625.jpg",
         # Add more images as needed
     ]
 
     # Define directories
     base_dirs = {
-        "extracted": "patches/extracted",
-        "compressed": "patches/compressed",
-        "distorted": "patches/distorted",
+        "extracted": "dataset_attention/train/extracted",
+        "compressed": "dataset_attention/train//compressed",
+        # "distorted": "patches/distorted",
     }
 
     output_dirs = {
         "extracted": "draw/extracted",
         "compressed": "draw/compressed",
-        "distorted": "draw/distorted",
+        # "distorted": "draw/distorted",
     }
 
     # Setup output directories

@@ -305,7 +305,7 @@ class QualityTrainer:
         previous_val_losses: List[float] = []
 
         for epoch in range(num_epochs):
-            print(f"\nEpoch {epoch+1}/{num_epochs}")
+            print(f"\nEpoch {epoch + 1}/{num_epochs}")
 
             # Training and validation
             train_metrics = self.train_epoch()
@@ -339,7 +339,7 @@ class QualityTrainer:
                 self.save_checkpoint(epoch, val_metrics, is_best=False)
 
             if patience_counter >= early_stopping_patience:
-                print(f"\nEarly stopping triggered after {epoch+1} epochs")
+                print(f"\nEarly stopping triggered after {epoch + 1} epochs")
                 break
 
         wandb.finish()
@@ -352,7 +352,7 @@ def main():
     # Configuration
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted_attention"
-    BATCH_SIZE = 64  # Reduced batch size for better generalization
+    BATCH_SIZE = 128  # Reduced batch size for better generalization
     NUM_EPOCHS = 100
     LEARNING_RATE = 5e-5  # Reduced initial learning rate
     CHECKPOINT_DIR = "checkpoints"

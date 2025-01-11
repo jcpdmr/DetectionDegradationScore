@@ -6,7 +6,7 @@ import math
 import torch.nn as nn
 import numpy as np
 from tqdm import tqdm
-from patches_loader import create_dataloaders
+from dataloader import create_dataloaders
 from typing import Tuple, Dict, Optional, List
 from score_metrics import match_predictions
 from yoloios import (
