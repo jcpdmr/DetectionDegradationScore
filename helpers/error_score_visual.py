@@ -166,16 +166,24 @@ def create_error_score_analysis(error_scores, output_path, title_prefix):
 
 
 # Process both datasets
-train_scores = load_error_scores("dataset_attention/train/error_scores.json")
-val_scores = load_error_scores("dataset_attention/val/error_scores.json")
+train_scores = load_error_scores(
+    "error_scores_analysis/quality_range_uniform_20_60_2/train/error_scores.json"
+)
+val_scores = load_error_scores(
+    "error_scores_analysis/quality_range_uniform_20_60_2/val/error_scores.json"
+)
 
 # Create visualizations and get statistics
 train_fig, train_stats = create_error_score_analysis(
-    train_scores, "dataset_attention/train/error_scores_visual.html", "Training"
+    train_scores,
+    "error_scores_analysis/quality_range_uniform_20_60_2/train/error_scores_visual.html",
+    "Training",
 )
 
 val_fig, val_stats = create_error_score_analysis(
-    val_scores, "dataset_attention/val/error_scores_visual.html", "Validation"
+    val_scores,
+    "error_scores_analysis/quality_range_uniform_20_60_2/val/error_scores_visual.html",
+    "Validation",
 )
 
 # Print statistical summary
