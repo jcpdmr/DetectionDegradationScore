@@ -29,11 +29,13 @@ def clean_and_create_directory_structure(base_path):
     # Create or clean output directories
     for dir_path in base_dirs:
         if os.path.exists(dir_path):
+            print(f"Cleaning directory: {dir_path}")
             shutil.rmtree(dir_path)
         os.makedirs(dir_path)
+        print(f"Creating directory: {dir_path}")
 
 
-def generate_quality_values(image_files, quality_range=(20, 60)):
+def generate_quality_values(image_files, quality_range=(40, 50)):
     """
     Generates a dictionary mapping image names to their randomly assigned
     compression quality values.
