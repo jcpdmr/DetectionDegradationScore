@@ -35,7 +35,7 @@ def clean_and_create_directory_structure(base_path):
         print(f"Creating directory: {dir_path}")
 
 
-def generate_quality_values(image_files, quality_range=(40, 50)):
+def generate_quality_values(image_files, quality_range=(10, 30)):
     """
     Generates a dictionary mapping image names to their randomly assigned
     compression quality values.

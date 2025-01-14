@@ -167,22 +167,22 @@ def create_error_score_analysis(error_scores, output_path, title_prefix):
 
 # Process both datasets
 train_scores = load_error_scores(
-    "error_scores_analysis/04_quality_range_uniform_40_50_2/train/error_scores.json"
+    "error_scores_analysis/08_quality_range_uniform_20_40_visgen/train/error_scores.json"
 )
 val_scores = load_error_scores(
-    "error_scores_analysis/04_quality_range_uniform_40_50_2/val/error_scores.json"
+    "error_scores_analysis/08_quality_range_uniform_20_40_visgen/val/error_scores.json"
 )
 
 # Create visualizations and get statistics
 train_fig, train_stats = create_error_score_analysis(
     train_scores,
-    "error_scores_analysis/04_quality_range_uniform_40_50_2/train/error_scores_visual.html",
+    "error_scores_analysis/08_quality_range_uniform_20_40_visgen/train/error_scores_visual.html",
     "Training",
 )
 
 val_fig, val_stats = create_error_score_analysis(
     val_scores,
-    "error_scores_analysis/04_quality_range_uniform_40_50_2/val/error_scores_visual.html",
+    "error_scores_analysis/08_quality_range_uniform_20_40_visgen/val/error_scores_visual.html",
     "Validation",
 )
 

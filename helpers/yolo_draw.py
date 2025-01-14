@@ -184,12 +184,14 @@ def analyze_metrics(metrics):
 def main():
     # Define image list to process
     image_list = [
-        "000000000025.jpg",
-        "000000000078.jpg",
-        "000000000321.jpg",
-        "000000000400.jpg",
-        "000000000419.jpg",
-        "000000447588.jpg",
+        "1.jpg",
+        "2.jpg",
+        "4.jpg",
+        "5.jpg",
+        "6.jpg",
+        "7.jpg",
+        "9.jpg",
+        "10.jpg",
         # Add more images as needed
     ]
 

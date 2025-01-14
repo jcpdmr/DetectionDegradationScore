@@ -273,7 +273,7 @@ def create_analysis_report(df, output_path):
 
 
 # Define file paths
-error_scores_run_folder = "04_quality_range_uniform_40_50_2"
+error_scores_run_folder = "08_quality_range_uniform_20_40_visgen"
 quality_path = "dataset_attention/train/quality_mapping.json"
 error_scores_path = (
     f"error_scores_analysis/{error_scores_run_folder}/train/error_scores.json"
