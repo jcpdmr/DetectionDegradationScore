@@ -4,6 +4,7 @@ output/
 __pycache__/
 dataset/
 dataset_attention/
+unbalanced_dataset/
 feature_extracted_attention/
 wandb/
 checkpoints/

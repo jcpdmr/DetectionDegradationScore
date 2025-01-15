@@ -27,7 +27,7 @@ def create_split_directories(base_path, splits=["train", "val", "test"]):
             path.mkdir(parents=True, exist_ok=True)
 
 
-def split_images(image_files, val_ratio=0.001, test_ratio=0.001, seed=42):
+def split_images(image_files, val_ratio=0, test_ratio=0, seed=42):
     """
     Split image files into train, validation and test sets
 
@@ -118,7 +118,7 @@ def process_image(args):
 def main():
     # Configuration
     INPUT_DIR = "../visual_genome"
-    OUTPUT_DIR = "dataset_attention"
+    OUTPUT_DIR = "unbalanced_dataset"
     TARGET_SIZE = 320  # Target size for the square patches
     MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
     NUM_WORKERS = os.cpu_count()  # Use all available CPU cores
