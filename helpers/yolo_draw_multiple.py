@@ -5,6 +5,7 @@ import cv2
 import json
 import sys
 from pathlib import Path
+from torchvision import transforms
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from score_metrics import match_predictions
@@ -37,11 +38,14 @@ def setup_output_directories(base_dir="draw"):
                     shutil.rmtree(file_path)
 
 
-def draw_predictions(image, results, save_path):
+def draw_predictions(image_tensor, results, save_path):
     """
-    Draw bounding boxes, class labels and scores on the image and save it.
+    Draw bounding boxes on image and save it.
+    Now accepts tensor input and converts back for visualization.
     """
-    annotated_img = image.copy()
+    # Convert tensor back to image format for visualization
+    image_np = (image_tensor.permute(1, 2, 0).numpy() * 255).astype("uint8")
+    annotated_img = image_np.copy()
 
     boxes = results[0].boxes
     for box in boxes:
@@ -68,31 +72,38 @@ def draw_predictions(image, results, save_path):
             2,
         )
 
-    cv2.imwrite(str(save_path), annotated_img)
+    # Save in BGR format for OpenCV
+    cv2.imwrite(str(save_path), cv2.cvtColor(annotated_img, cv2.COLOR_RGB2BGR))
     return results
 
 
 def process_image_sets(model, image_list, base_dirs, output_dirs):
     """
-    Process sets of images (GT and multiple compression levels) and calculate quality scores.
+    Process sets of images with consistent image loading.
     """
     metrics = {f"quality_{q}": [] for q in QUALITY_VALUES}
 
     for img_name in image_list:
-        # Process GT image
+        # Load and process GT image
         gt_path = base_dirs["extracted"] / img_name
-        gt_image = cv2.imread(str(gt_path))
-        gt_results = model(gt_image)
-        draw_predictions(gt_image, gt_results, output_dirs["extracted"] / img_name)
+        gt_tensor = load_and_transform_image(gt_path)  # Now returns (1,C,H,W)
+        gt_results = model(gt_tensor)
+        draw_predictions(
+            gt_tensor.squeeze(0),  # Remove batch dim for visualization
+            gt_results,
+            output_dirs["extracted"] / img_name,
+        )
 
         # Process each compression quality
         for quality in QUALITY_VALUES:
             comp_path = base_dirs[f"compressed{quality}"] / img_name
             if comp_path.exists():
-                comp_image = cv2.imread(str(comp_path))
-                comp_results = model(comp_image)
+                comp_tensor = load_and_transform_image(
+                    comp_path
+                )  # Now returns (1,C,H,W)
+                comp_results = model(comp_tensor)
                 draw_predictions(
-                    comp_image,
+                    comp_tensor.squeeze(0),  # Remove batch dim for visualization
                     comp_results,
                     output_dirs[f"compressed{quality}"] / img_name,
                 )
@@ -121,6 +132,25 @@ def process_image_sets(model, image_list, base_dirs, output_dirs):
                 )
 
     return metrics
+
+
+def load_and_transform_image(image_path):
+    """
+    Load and transform image consistently with MultiCompressionErrorScoreCalculator
+    and add batch dimension for YOLO
+    """
+    # Read image and convert to RGB
+    img = cv2.imread(str(image_path))
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # Apply transform
+    transform = transforms.ToTensor()
+    tensor = transform(img)
+
+    # Add batch dimension
+    tensor = tensor.unsqueeze(0)  # Add batch dimension: (C,H,W) -> (1,C,H,W)
+
+    return tensor
 
 
 def analyze_metrics(metrics):

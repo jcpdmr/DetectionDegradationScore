@@ -135,10 +135,10 @@ def main():
     Main function to calculate error scores for multiple compression levels
     """
     # Configuration
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     DATA_ROOT = "unbalanced_dataset"
-    OUTPUT_ROOT = "error_scores_analysis"
-    BATCH_SIZE = 64
+    OUTPUT_ROOT = "error_scores_analysis/mapping"
+    BATCH_SIZE = 128
     MODEL_PATH = "../yolo11m.pt"
     QUALITY_VALUES = [10, 20, 30, 40, 50]
 
@@ -164,7 +164,7 @@ def main():
 
     # Process each split
     for split, loader in [
-        ("train", train_loader),
+        ("total", train_loader),
         # ("val", val_loader),
         # ("test", test_loader),
     ]:
