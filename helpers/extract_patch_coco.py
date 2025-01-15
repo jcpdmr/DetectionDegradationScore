@@ -122,7 +122,7 @@ def main():
     TARGET_SIZE = 320  # Target size for the square patches
     MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
     NUM_WORKERS = os.cpu_count()  # Use all available CPU cores
-    MAX_IMAGES = 5000  # Maximum number of images to process
+    MAX_IMAGES = 100000  # Maximum number of images to process
 
     # Create directory structure
     create_split_directories(OUTPUT_DIR)
