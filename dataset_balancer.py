@@ -23,7 +23,7 @@ class DatasetBalancer:
             recalc_interval: Number of images after which to recalculate critical bins
         """
         self.n_bins = n_bins
-        self.bin_edges = np.linspace(0, 1, n_bins + 1)
+        self.bin_edges = np.linspace(0, 1.05, n_bins + 1)
         self.critical_range = critical_range
         self.recalc_interval = recalc_interval
 
@@ -384,15 +384,15 @@ class DatasetBalancer:
 
 
 balancer = DatasetBalancer(
-    "error_scores_analysis/mapping/2025_01_15_192915/total/error_scores.json",
-    n_bins=20,
+    "error_scores_analysis/mapping/2025_01_15_220630/total/error_scores.json",
+    n_bins=21,
     critical_range=(0.8, 1),
 )
 selected_items = balancer.create_balanced_dataset()
 balancer.print_statistics()
 
 # Save results
-with open("balanced_dataset.json", "w") as f:
+with open("balanced_dataset_21bins.json", "w") as f:
     json.dump(
         {
             "selected_items": selected_items,
