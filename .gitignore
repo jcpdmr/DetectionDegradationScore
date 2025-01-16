@@ -5,6 +5,7 @@ __pycache__/
 dataset/
 dataset_attention/
 unbalanced_dataset/
+balanced_dataset/
 feature_extracted_attention/
 wandb/
 checkpoints/
