@@ -2,7 +2,7 @@ import torch
 import json
 from pathlib import Path
 from tqdm import tqdm
-from typing import Dict
+from typing import Dict, List
 import sys
 import os
 from ultralytics import YOLO
@@ -22,7 +22,7 @@ class MultiCompressionErrorScoreCalculator:
         self,
         model_path: str,
         device: torch.device,
-        quality_values: list = [10, 20, 30, 40, 50],
+        quality_values: List[int],
     ):
         """
         Initialize the calculator with YOLO model
@@ -140,7 +140,7 @@ def main():
     OUTPUT_ROOT = "error_scores_analysis/mapping"
     BATCH_SIZE = 128
     MODEL_PATH = "../yolo11m.pt"
-    QUALITY_VALUES = [10, 20, 30, 40, 50]
+    QUALITY_VALUES = [16, 24, 28, 35, 45, 55]
 
     # Create timestamped directory
     timestamp = get_timestamp_dir()

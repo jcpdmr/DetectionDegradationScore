@@ -4,14 +4,17 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
+from typing import List
 
 
-def clean_and_create_directory_structure(base_path):
+def clean_and_create_directory_structure(base_path, quality_values: List[int]):
     """
     Creates or cleans the directory structure for GT and MOD images.
+
+    Args:
+        quality_values: List of quality values to create directories for [10, 20, 30, 40, 50]
     """
     base_path = Path(base_path)
-    quality_values = [10, 20, 30, 40, 50]
 
     # Create compressed directories for each quality value
     for quality in quality_values:
@@ -53,7 +56,7 @@ def process_single_image(args):
         return input_path.name, {q: False for q in quality_values}
 
 
-def process_split(split_name, base_path):
+def process_split(split_name, base_path, quality_values: List[int]):
     """
     Process all images in a specific dataset split with multiple compression qualities
     """
@@ -68,8 +71,6 @@ def process_split(split_name, base_path):
         + list(input_dir.glob("*.jpeg"))
         + list(input_dir.glob("*.png"))
     )
-
-    quality_values = [10, 20, 30, 40, 50]
 
     # Prepare arguments for parallel processing
     process_args = [
@@ -104,14 +105,19 @@ def process_split(split_name, base_path):
 
 def main():
     BASE_PATH = "unbalanced_dataset"
-    splits = ["train"]  # Modificato per processare solo train come richiesto
+    splits = ["train"]  # Modified to process only "train" set
+    quality_values = [16, 24, 28, 35, 45, 55]
 
     # Create directory structure
-    clean_and_create_directory_structure(BASE_PATH)
+    clean_and_create_directory_structure(
+        base_path=BASE_PATH, quality_values=quality_values
+    )
 
     for split in splits:
         print(f"\nProcessing {split} split...")
-        success_count, fail_count = process_split(split, BASE_PATH)
+        success_count, fail_count = process_split(
+            split_name=split, base_path=BASE_PATH, quality_values=quality_values
+        )
 
         print(f"\n{split} split complete:")
         for quality in success_count.keys():

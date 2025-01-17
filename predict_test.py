@@ -9,9 +9,10 @@ from quality_estimator import create_quality_model
 def predict_test_set(
     model_path: str,
     features_root: str,
+    error_scores_root: str,
     output_path: str,
     batch_size: int = 64,
-    device: str = "cuda",
+    device: str = "cuda:1",
 ):
     """
     Make predictions on test set and save results to JSON.
@@ -34,7 +35,9 @@ def predict_test_set(
 
     # Create test dataloader
     _, _, test_loader = create_feature_dataloaders(
-        features_root=features_root, batch_size=batch_size
+        features_root=features_root,
+        error_scores_root=error_scores_root,
+        batch_size=batch_size,
     )
 
     # Store results
@@ -84,11 +87,15 @@ def predict_test_set(
 def main():
     # Configuration
     MODEL_PATH = "checkpoints/best_model.pt"
-    FEATURES_ROOT = "feature_extracted_attention"
+    FEATURES_ROOT = "feature_extracted"
+    ERROR_SCORES_ROOT = "balanced_dataset"
     OUTPUT_PATH = "test_predictions.json"
 
     predict_test_set(
-        model_path=MODEL_PATH, features_root=FEATURES_ROOT, output_path=OUTPUT_PATH
+        model_path=MODEL_PATH,
+        features_root=FEATURES_ROOT,
+        error_scores_root=ERROR_SCORES_ROOT,
+        output_path=OUTPUT_PATH,
     )
 
 

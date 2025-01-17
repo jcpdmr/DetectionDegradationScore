@@ -3,17 +3,23 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 import os
+import json
 
 
-def create_interactive_analysis(data_path):
+def create_interactive_analysis(json_path):
     """
-    Create an interactive visualization for comparing similarity and error scores.
+    Create an interactive visualization for comparing similarity and error scores from JSON data.
 
     Args:
-        data_path (str): Path to CSV file containing the scores
+        json_path (str): Path to JSON file containing the scores
     """
-    # Read the data
-    df = pd.read_csv(data_path)
+    # Read and process the JSON data
+    with open(json_path, "r") as f:
+        data = json.load(f)
+
+    # Convert to DataFrame and rename columns
+    df = pd.DataFrame(data)
+    df = df.rename(columns={"distance": "similarity_score", "filename": "image_name"})
 
     # Create figure with secondary y-axis
     fig = make_subplots(
@@ -63,7 +69,11 @@ def create_interactive_analysis(data_path):
     # 2. Distribution plot
     fig.add_trace(
         go.Histogram(
-            x=df["similarity_score"], name="Similarity Score", opacity=0.75, nbinsx=30
+            x=df["similarity_score"],
+            name="Similarity Score",
+            opacity=0.75,
+            xbins=dict(start=0, end=1.05, size=0.05),
+            autobinx=False,
         ),
         row=1,
         col=2,
@@ -146,9 +156,10 @@ def create_interactive_analysis(data_path):
 
 
 def main():
-    # Use the function
-    base_path = "output/20250106-003734_compressed"
-    file_name = "test_results_compressed.csv"
+    # Specify the path to your JSON file
+    base_path = ""  # Modifica questo percorso
+    file_name = "test_predictions.json"  # Modifica questo nome file
+
     fig = create_interactive_analysis(os.path.join(base_path, file_name))
     fig.show()
 

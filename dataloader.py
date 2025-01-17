@@ -171,12 +171,13 @@ class FeatureMapDataset(Dataset):
     Dataset for loading extracted feature maps and their error scores
     """
 
-    def __init__(self, features_root: str, split: str):
+    def __init__(self, features_root: str, error_scores_root: str, split: str):
         """
         Initialize dataset
 
         Args:
             features_root: Root directory containing feature maps
+            error_scores_root: Root directory containing error scores
             split: Dataset split ('train', 'val', 'test')
         """
         if split not in ["train", "val", "test"]:
@@ -186,7 +187,7 @@ class FeatureMapDataset(Dataset):
         self.split_path = Path(features_root) / split
         self.gt_path = self.split_path / "extracted"
         self.compressed_path = self.split_path / "compressed"
-        self.scores_path = Path("dataset_attention") / split / "error_scores.json"
+        self.scores_path = Path(error_scores_root) / split / "error_scores.json"
 
         # Verify paths exist
         if not self.gt_path.exists():
@@ -315,7 +316,7 @@ def create_multi_compression_dataloaders(
 
 
 def create_feature_dataloaders(
-    features_root: str, batch_size: int, num_workers: int = 4
+    features_root: str, error_scores_root: str, batch_size: int, num_workers: int = 4
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Create dataloaders for feature maps
@@ -326,7 +327,11 @@ def create_feature_dataloaders(
     loaders = {}
 
     for split in ["train", "val", "test"]:
-        dataset = FeatureMapDataset(features_root, split)
+        dataset = FeatureMapDataset(
+            features_root=features_root,
+            error_scores_root=error_scores_root,
+            split=split,
+        )
 
         loaders[split] = DataLoader(
             dataset,

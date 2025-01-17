@@ -24,7 +24,7 @@ class DatasetBalancer:
             recalc_interval: Number of images after which to recalculate critical bins
         """
         self.n_bins = n_bins
-        self.bin_edges = np.linspace(0, 1.05, n_bins + 1)
+        self.bin_edges = np.linspace(0, 1.025, n_bins + 1)
         self.critical_range = critical_range
         self.recalc_interval = recalc_interval
 
@@ -210,6 +210,24 @@ class DatasetBalancer:
         """
         Update final statistics after dataset creation.
         """
+        if not selected_items:
+            self.stats["final_stats"] = {
+                "images_used": 0,
+                "usage_percentage": 0,
+                "unused_images": self.total_images,
+                "bins_filled": 0,
+                "average_images_per_bin": 0,
+            }
+            self.stats["bin_stats"] = {
+                "bin_counts": {},
+                "bin_percentages": {},
+                "deviation_from_target": {},
+                "unfilled_bins": list(range(self.n_bins)),
+                "overfilled_bins": [],
+                "underfilled_bins": [],
+            }
+            return
+
         self.stats["final_stats"] = {
             "images_used": len(selected_items),
             "usage_percentage": (len(selected_items) / self.total_images) * 100,
@@ -273,6 +291,17 @@ class DatasetBalancer:
 
         # Find the minimum number of available images among all bins
         min_available = min(len(bins_availability[i]) for i in range(self.n_bins))
+        empty_bins = [i for i in range(self.n_bins) if len(bins_availability[i]) == 0]
+        if min_available == 0:
+            print(
+                "\nWarning: Some bins have no available images. Cannot create balanced dataset."
+            )
+            print("\nEmpty bins:")
+            for bin_idx in empty_bins:
+                print(
+                    f"Bin {bin_idx}: Range [{self.bin_edges[bin_idx]:.3f}, {self.bin_edges[bin_idx + 1]:.3f})"
+                )
+            return {}
 
         # Target per bin with 1% tolerance
         base_target = min_available
@@ -410,9 +439,9 @@ def validate_dataset(json_file, img_file):
     else:
         print("No duplicate images found.")
 
-    # Create bin edges (21 bins from 0 to 20)
-    n_bins = 21  # Changed to 21 bins
-    bin_edges = np.linspace(0, 1.05, n_bins + 1)
+    # Create bin edges (41 bins from 0 to 1.025)
+    n_bins = 41
+    bin_edges = np.linspace(0, 1.025, n_bins + 1)
 
     # Validate bin assignments and count distribution
     bin_distribution = np.zeros(n_bins, dtype=int)
@@ -459,7 +488,7 @@ def validate_dataset(json_file, img_file):
     # Create and show distribution plot
     plt.figure(figsize=(15, 7))
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    plt.bar(bin_centers, bin_distribution, width=0.04, alpha=0.7)
+    plt.bar(bin_centers, bin_distribution, width=0.01, alpha=0.7)
     plt.xlabel("Score Range")
     plt.ylabel("Number of Images")
     plt.title("Distribution of Images Across Bins (0-20)")
@@ -487,12 +516,12 @@ def validate_dataset(json_file, img_file):
 
 
 if __name__ == "__main__":
-    N_BINS = 21
+    N_BINS = 41
     MULTI_ERROR_SCORES_PATH = (
         "error_scores_analysis/mapping/2025_01_15_220630/total/error_scores.json"
     )
-    OUTPUT_BAL_DATASET_JSON = "balanced_dataset_21bins.json"
-    OUTPUT_DISTRIBUTION_IMG = "balanced_dataset_distribution.png"
+    OUTPUT_BAL_DATASET_JSON = "balanced_dataset_41bins.json"
+    OUTPUT_DISTRIBUTION_IMG = "balanced_dataset_distribution_41bins.png"
 
     balancer = DatasetBalancer(
         error_scores_path=MULTI_ERROR_SCORES_PATH,

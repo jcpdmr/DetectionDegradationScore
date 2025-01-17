@@ -51,7 +51,7 @@ def create_error_score_analysis(error_scores, output_path, title_prefix):
     # 1. Simple histogram (top left)
     # This directly shows the distribution of scores
     fig.add_trace(
-        go.Histogram(x=error_scores, nbinsx=100, name="Error Scores", showlegend=False),
+        go.Histogram(x=error_scores, nbinsx=20, name="Error Scores", showlegend=False),
         row=1,
         col=1,
     )
@@ -166,23 +166,19 @@ def create_error_score_analysis(error_scores, output_path, title_prefix):
 
 
 # Process both datasets
-train_scores = load_error_scores(
-    "error_scores_analysis/09_quality_range_uniform_10_30_visgen/train/error_scores.json"
-)
-val_scores = load_error_scores(
-    "error_scores_analysis/09_quality_range_uniform_10_30_visgen/val/error_scores.json"
-)
+train_scores = load_error_scores("balanced_dataset/train/error_scores.json")
+val_scores = load_error_scores("balanced_dataset/val/error_scores.json")
 
 # Create visualizations and get statistics
 train_fig, train_stats = create_error_score_analysis(
     train_scores,
-    "error_scores_analysis/09_quality_range_uniform_10_30_visgen/train/error_scores_visual.html",
+    "balanced_dataset/train/error_scores_visual.html",
     "Training",
 )
 
 val_fig, val_stats = create_error_score_analysis(
     val_scores,
-    "error_scores_analysis/09_quality_range_uniform_10_30_visgen/val/error_scores_visual.html",
+    "balanced_dataset/val/error_scores_visual.html",
     "Validation",
 )
 

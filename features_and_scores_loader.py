@@ -15,7 +15,7 @@ class FeatureMapsDataset(Dataset):
     Handles file name matching between feature files and scores.
     """
 
-    def __init__(self, features_root: str, split: str):
+    def __init__(self, features_root: str, error_scores_root: str, split: str):
         """
         Initialize the dataset for loading feature maps and scores.
 
@@ -30,7 +30,7 @@ class FeatureMapsDataset(Dataset):
         self.split_path = Path(features_root) / split
         self.gt_features_path = self.split_path / "extracted"
         self.mod_features_path = self.split_path / "compressed"
-        self.scores_path = Path("dataset_attention") / split / "error_scores.json"
+        self.scores_path = Path(error_scores_root) / split / "error_scores.json"
 
         # Verify directories and load scores
         self._verify_directories()
@@ -186,6 +186,7 @@ class FeatureMapsDataset(Dataset):
 
 def create_feature_dataloaders(
     features_root: str,
+    error_scores_root: str,
     batch_size: int,
     num_workers: int = 4,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
@@ -205,6 +206,7 @@ def create_feature_dataloaders(
     for split in ["train", "val", "test"]:
         dataset = FeatureMapsDataset(
             features_root=features_root,
+            error_scores_root=error_scores_root,
             split=split,
         )
 
