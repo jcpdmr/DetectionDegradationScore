@@ -158,7 +158,7 @@ def create_interactive_analysis(json_path):
 def main():
     # Specify the path to your JSON file
     base_path = ""  # Modifica questo percorso
-    file_name = "test_predictions.json"  # Modifica questo nome file
+    file_name = "test_predictions_visgen.json"  # Modifica questo nome file
 
     fig = create_interactive_analysis(os.path.join(base_path, file_name))
     fig.show()

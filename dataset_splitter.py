@@ -376,7 +376,7 @@ class DatasetOrganizer:
 
 if __name__ == "__main__":
     # Hardcoded configuration
-    INPUT_PATH = "balanced_dataset_21bins.json"
+    INPUT_PATH = "balanced_dataset_20bins_point8_qual_40_45_50_55_60_70.json"
     OUTPUT_PATH = "split.json"
     VAL_SPLIT = 0.1
     TEST_SPLIT = 0.1

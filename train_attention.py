@@ -249,7 +249,7 @@ class QualityTrainer:
                 self.save_checkpoint(epoch, val_metrics, is_best=True)
             else:
                 patience_counter += 1
-                self.save_checkpoint(epoch, val_metrics, is_best=False)
+                # self.save_checkpoint(epoch, val_metrics, is_best=False)
 
             if patience_counter >= early_stopping_patience:
                 print(f"\nEarly stopping triggered after {epoch + 1} epochs")
@@ -269,7 +269,7 @@ def main():
     BATCH_SIZE = 128
     NUM_EPOCHS = 100
     LEARNING_RATE = 5e-5
-    CHECKPOINT_DIR = "checkpoints"
+    CHECKPOINT_DIR = "checkpoints/visual_genome_320p_qual_40_45_50_55_60_70"
 
     # Create dataloaders
     from dataloader import create_feature_dataloaders

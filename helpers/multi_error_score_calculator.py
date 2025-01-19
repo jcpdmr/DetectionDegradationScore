@@ -36,6 +36,7 @@ class MultiCompressionErrorScoreCalculator:
         self.quality_values = quality_values
         # Initialize YOLO model for predictions
         self.yolo_model = YOLO(model_path, verbose=False)
+        self.yolo_model.to(device)
         self.yolo_model.model.eval()
 
     def process_batch(
@@ -140,7 +141,7 @@ def main():
     OUTPUT_ROOT = "error_scores_analysis/mapping"
     BATCH_SIZE = 128
     MODEL_PATH = "../yolo11m.pt"
-    QUALITY_VALUES = [16, 24, 28, 35, 45, 55]
+    QUALITY_VALUES = [40, 45, 50, 55, 60, 70]
 
     # Create timestamped directory
     timestamp = get_timestamp_dir()

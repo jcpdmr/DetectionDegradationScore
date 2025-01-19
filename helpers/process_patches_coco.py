@@ -33,7 +33,7 @@ def apply_compression_artifacts(img_path, output_path, quality):
     with Image.open(img_path) as img:
         if img.mode != "RGB":
             img = img.convert("RGB")
-        img.save(output_path, "JPEG", quality=quality, optimize=True)
+        img.save(output_path, "JPEG", quality=quality, optimize=True, smooth=2, subsampling="4:4:4")
 
 
 def process_single_image(args):
@@ -106,7 +106,7 @@ def process_split(split_name, base_path, quality_values: List[int]):
 def main():
     BASE_PATH = "unbalanced_dataset"
     splits = ["train"]  # Modified to process only "train" set
-    quality_values = [16, 24, 28, 35, 45, 55]
+    quality_values = [40, 45, 50, 55, 60, 70]
 
     # Create directory structure
     clean_and_create_directory_structure(

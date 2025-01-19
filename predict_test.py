@@ -89,7 +89,7 @@ def main():
     MODEL_PATH = "checkpoints/best_model.pt"
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
-    OUTPUT_PATH = "test_predictions.json"
+    OUTPUT_PATH = "test_predictions_visgen.json"
 
     predict_test_set(
         model_path=MODEL_PATH,
