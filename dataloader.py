@@ -217,7 +217,9 @@ class FeatureMapDataset(Dataset):
         )
 
         if not self.feature_names:
-            raise RuntimeError(f"No valid feature maps found in {self.gt_path}")
+            pass
+            a = 1
+            # raise RuntimeError(f"No valid feature maps found in {self.gt_path}")
 
     def __len__(self) -> int:
         return len(self.feature_names)

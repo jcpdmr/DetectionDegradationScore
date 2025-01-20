@@ -117,11 +117,6 @@ class QualityAssessmentModel(nn.Module):
                 DualPathAttention(in_channels, num_heads, head_dim, dropout),
                 DualPathAttention(in_channels, num_heads, head_dim, dropout),
                 DualPathAttention(in_channels, num_heads, head_dim, dropout),
-                DualPathAttention(in_channels, num_heads, head_dim, dropout),
-                DualPathAttention(in_channels, num_heads, head_dim, dropout),
-                DualPathAttention(in_channels, num_heads, head_dim, dropout),
-                DualPathAttention(in_channels, num_heads, head_dim, dropout),
-                DualPathAttention(in_channels, num_heads, head_dim, dropout),
             ]
         )
 

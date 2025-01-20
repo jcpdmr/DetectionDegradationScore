@@ -106,7 +106,7 @@ def process_split(split_name, base_path, quality_values: List[int]):
 def main():
     BASE_PATH = "unbalanced_dataset"
     splits = ["train"]  # Modified to process only "train" set
-    quality_values = [40, 45, 50, 55, 60, 70]
+    quality_values = [20, 24, 28, 32, 36, 40, 50]
 
     # Create directory structure
     clean_and_create_directory_structure(

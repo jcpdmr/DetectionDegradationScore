@@ -15,7 +15,6 @@ class QualityTrainer:
     """
     Trainer for the quality assessment model using MSE loss only.
     Implements training techniques including:
-    - Gradient accumulation
     - Monte Carlo dropout for validation
     - Plateau detection and learning rate adaptation
     """
@@ -46,7 +45,7 @@ class QualityTrainer:
         self.model = create_quality_model().to(device)
 
         # Initialize loss
-        self.mae_loss = nn.L1Loss()
+        self.mse_loss = nn.MSELoss()
 
         # Setup parameter groups for different learning rates
         attention_params = []
@@ -77,13 +76,12 @@ class QualityTrainer:
             self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         # Training configuration
-        self.accumulation_steps = 4
         self.gradient_clip_value = 1.0
         self.mc_dropout_samples = 5
 
     def train_epoch(self) -> Dict[str, float]:
         """
-        Train for one epoch with gradient accumulation.
+        Train for one epoch.
 
         Returns:
             Dictionary of training metrics
@@ -91,7 +89,7 @@ class QualityTrainer:
         self.model.train()
         running_loss = 0.0
 
-        for idx, batch in enumerate(tqdm(self.train_loader, desc="Training")):
+        for batch in tqdm(self.train_loader, desc="Training"):
             # Process batch
             gt_features = batch["gt_features"].to(self.device)
             mod_features = batch["compressed_features"].to(self.device)
@@ -101,12 +99,9 @@ class QualityTrainer:
             predictions = self.model(gt_features, mod_features).squeeze()
 
             # Calculate MSE loss
-            loss = self.mae_loss(predictions, scores)
+            loss = self.mse_loss(predictions, scores)
 
-            # Scale loss for accumulation
-            loss = loss / self.accumulation_steps
-
-            # Backward pass with gradient accumulation
+            # Backward pass
             loss.backward()
 
             # # Gradient clipping
@@ -114,16 +109,15 @@ class QualityTrainer:
             #     self.model.parameters(), max_norm=self.gradient_clip_value
             # )
 
-            # Update weights after accumulation
-            if (idx + 1) % self.accumulation_steps == 0:
-                self.optimizer.step()
-                self.optimizer.zero_grad()
+            # Update weights
+            self.optimizer.step()
+            self.optimizer.zero_grad()
 
             # Update metrics
-            running_loss += loss.item() * self.accumulation_steps
+            running_loss += loss.item()
 
         # Calculate epoch metrics
-        return {"train_loss": running_loss / len(self.train_loader)}
+        return {"train_mse_loss": running_loss / len(self.train_loader)}
 
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
@@ -150,7 +144,7 @@ class QualityTrainer:
             predictions /= self.mc_dropout_samples
 
             # Calculate MSE loss
-            loss = self.mae_loss(predictions, scores)
+            loss = self.mse_loss(predictions, scores)
             running_loss += loss.item()
 
             # Store predictions for analysis
@@ -159,7 +153,7 @@ class QualityTrainer:
 
         # Calculate metrics
         metrics = {
-            "val_loss": running_loss / len(self.val_loader),
+            "val_mse_loss": running_loss / len(self.val_loader),
             "val_mean_pred": np.mean(all_preds),
             "val_std_pred": np.std(all_preds),
         }
@@ -221,7 +215,6 @@ class QualityTrainer:
                 "learning_rate": self.optimizer.param_groups[0]["lr"],
                 "batch_size": self.train_loader.batch_size,
                 "model_type": self.model.__class__.__name__,
-                "accumulation_steps": self.accumulation_steps,
                 "gradient_clipping": self.gradient_clip_value,
             },
         )
@@ -237,14 +230,14 @@ class QualityTrainer:
             val_metrics = self.validate()
 
             # Update learning rate scheduler
-            self.scheduler.step(val_metrics["val_loss"])
+            self.scheduler.step(val_metrics["val_mse_loss"])
 
             # Log metrics
             wandb.log({**train_metrics, **val_metrics})
 
             # Early stopping and checkpointing
-            if val_metrics["val_loss"] < best_val_loss:
-                best_val_loss = val_metrics["val_loss"]
+            if val_metrics["val_mse_loss"] < best_val_loss:
+                best_val_loss = val_metrics["val_mse_loss"]
                 patience_counter = 0
                 self.save_checkpoint(epoch, val_metrics, is_best=True)
             else:
@@ -269,7 +262,7 @@ def main():
     BATCH_SIZE = 128
     NUM_EPOCHS = 100
     LEARNING_RATE = 5e-5
-    CHECKPOINT_DIR = "checkpoints/visual_genome_320p_qual_40_45_50_55_60_70"
+    CHECKPOINT_DIR = "checkpoints/attempt3_40bins_point8_05_visual_genome_cocotrain17_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
 
     # Create dataloaders
     from dataloader import create_feature_dataloaders

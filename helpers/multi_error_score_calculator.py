@@ -141,7 +141,7 @@ def main():
     OUTPUT_ROOT = "error_scores_analysis/mapping"
     BATCH_SIZE = 128
     MODEL_PATH = "../yolo11m.pt"
-    QUALITY_VALUES = [40, 45, 50, 55, 60, 70]
+    QUALITY_VALUES = [20, 24, 28, 32, 36, 40, 50]
 
     # Create timestamped directory
     timestamp = get_timestamp_dir()

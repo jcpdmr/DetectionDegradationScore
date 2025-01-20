@@ -376,10 +376,10 @@ class DatasetOrganizer:
 
 if __name__ == "__main__":
     # Hardcoded configuration
-    INPUT_PATH = "balanced_dataset_20bins_point8_qual_40_45_50_55_60_70.json"
+    INPUT_PATH = "balanced_dataset_40bins_point8_05_visual_genome_cocotrain17_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.json"
     OUTPUT_PATH = "split.json"
-    VAL_SPLIT = 0.1
-    TEST_SPLIT = 0.1
+    VAL_SPLIT = 0.05
+    TEST_SPLIT = 0.05
     SEED = 42
 
     # Create and run splitter
