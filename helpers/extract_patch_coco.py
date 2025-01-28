@@ -117,7 +117,7 @@ def process_image(args):
 
 def main():
     # Configuration
-    INPUT_DIR = "../visual_genome"
+    INPUT_DIR = "/andromeda/personal/jdamerini/visual_genome"
     OUTPUT_DIR = "unbalanced_dataset"
     TARGET_SIZE = 320  # Target size for the square patches
     MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
@@ -125,7 +125,7 @@ def main():
     MAX_IMAGES = 118287  # Maximum number of images to process
 
     # Create directory structure
-    # create_split_directories(OUTPUT_DIR)
+    create_split_directories(OUTPUT_DIR)
     # Get and split image files
     input_path = Path(INPUT_DIR)
     image_files = (
