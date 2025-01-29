@@ -2,7 +2,7 @@ import cv2
 import os
 import shutil
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 import random  # Added for random sampling
 
@@ -157,7 +157,7 @@ def main():
         ]
 
         # Process images in parallel with progress bar
-        with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
+        with ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
             results = list(
                 tqdm(
                     executor.map(process_image, process_args),

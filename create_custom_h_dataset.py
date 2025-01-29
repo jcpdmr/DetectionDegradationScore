@@ -6,7 +6,7 @@ from pathlib import Path
 from PIL import Image
 import random
 from tqdm import tqdm
-from multiprocessing import Pool, cpu_count
+from concurrent.futures import ThreadPoolExecutor
 
 
 def create_directory_structure(base_path, clean=True):
@@ -81,7 +81,7 @@ def prepare_dataset(
     h_values_path, src_base_path, dst_base_path, val_ratio=0.1, num_workers=None
 ):
     if num_workers is None:
-        num_workers = cpu_count()  # Use all available CPUs
+        num_workers = os.cpu_count()  # Use all available CPUs
 
     print(f"Using {num_workers} workers")
 
@@ -112,10 +112,10 @@ def prepare_dataset(
         ]
 
         # Process images in parallel with progress bar
-        with Pool(num_workers) as pool:
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
             results = list(
                 tqdm(
-                    pool.imap(process_single_image, process_args),
+                    executor.map(process_single_image, process_args),
                     total=len(image_list),
                     desc=f"Processing {split_name} set",
                 )
