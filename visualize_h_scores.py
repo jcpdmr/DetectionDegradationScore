@@ -13,10 +13,9 @@ def analyze_h_distributions(input_path):
         "h_ratio",
         "h_threshold",
         "h_hybrid",
+        "h_prop_diff",
         "h_diff_new",
-        "h_ratio_new",
-        "h_threshold_new",
-        "h_hybrid_new",
+        "h_prop_diff_new",
     ]
     h_values = {h_type: [] for h_type in h_types}
 
@@ -25,7 +24,7 @@ def analyze_h_distributions(input_path):
             h_values[h_type].append(scores[h_type])
 
     # Define bins
-    bins = np.linspace(0, 1.01, 6)
+    bins = np.linspace(-0.4, 1.01, 8)
 
     # Calculate histograms
     histograms = {}
@@ -45,6 +44,6 @@ def analyze_h_distributions(input_path):
 
 
 if __name__ == "__main__":
-    input_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_with_swap_v2.json"
+    input_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_with_swap_v3.json"
 
     histograms, bins, h_values = analyze_h_distributions(input_path)

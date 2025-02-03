@@ -27,7 +27,7 @@ def create_directory_structure(base_path, clean=True):
 
     # Create directories
     for split in ["train", "val"]:
-        for subdir in ["judge", "p0", "p1", "ref"]:
+        for subdir in ["judge", "p0", "p1", "ref", "e0", "e1"]:
             dir_path = Path(f"{base_path}/2afc/{split}/custom/{subdir}")
             dir_path.mkdir(parents=True, exist_ok=True)
             print(f"Created directory: {dir_path}")
@@ -50,6 +50,15 @@ def process_single_image(args):
         h_value = np.array(img_data["h_diff_new"]).reshape(1, 1, 1)
         np.save(
             f"{dst_base_path}/2afc/{split_name}/custom/judge/{base_name}.npy", h_value
+        )
+        # Save e0_new and e1_new as numpy array
+        e0_value = np.array(img_data["e0_new"]).reshape(1, 1, 1)
+        np.save(
+            f"{dst_base_path}/2afc/{split_name}/custom/e0/{base_name}.npy", e0_value
+        )
+        e1_value = np.array(img_data["e1_new"]).reshape(1, 1, 1)
+        np.save(
+            f"{dst_base_path}/2afc/{split_name}/custom/e1/{base_name}.npy", e1_value
         )
 
         # Define paths
@@ -137,7 +146,7 @@ if __name__ == "__main__":
     random.seed(42)
 
     # Define paths
-    h_values_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_with_swap_v2.json"
+    h_values_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_with_swap_v3.json"
     src_base_path = "unbalanced_dataset"
     dst_base_path = "../PerceptualSimilarity/dataset"
 

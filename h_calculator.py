@@ -46,6 +46,11 @@ def calculate_h_values(e0, e1):
     h_hybrid = sigmoid(k * (abs(normalized_diff) - 1)) * sigmoid(normalized_diff, k=2)
     results["h_hybrid"] = float(h_hybrid)
 
+    # 5. Proportional difference
+    h_prop_diff = e0 - e1
+
+    results["h_prop_diff"] = float(h_prop_diff)
+
     return results
 
 
@@ -64,7 +69,7 @@ def process_error_scores(input_path, output_path):
         h_values = calculate_h_values(e0, e1)
 
         # Store results
-        results[img_name] = {"24": e0, "55": e1, **h_values}
+        results[img_name] = {"e0": e0, "e1": e1, **h_values}
 
     # Save results
     with open(output_path, "w") as f:
@@ -75,7 +80,7 @@ def process_error_scores(input_path, output_path):
 
 if __name__ == "__main__":
     input_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/error_scores.json"
-    output_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_v2.json"
+    output_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_v3.json"
 
     results = process_error_scores(input_path, output_path)
 

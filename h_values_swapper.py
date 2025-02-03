@@ -20,12 +20,13 @@ def process_dataset_random_swap(input_path, output_path):
         result_dict["swapped"] = should_swap
 
         # For each h_score type, calculate the new score if swapped
-        h_types = ["h_diff", "h_ratio", "h_threshold", "h_hybrid"]
+        h_types = ["h_diff", "h_prop_diff"]
         for h_type in h_types:
             result_dict[f"{h_type}_new"] = (
                 1 - scores[h_type] if should_swap else scores[h_type]
             )
-
+        result_dict["e0_new"] = scores["e1"] if should_swap else scores["e0"]
+        result_dict["e1_new"] = scores["e0"] if should_swap else scores["e1"]
         # Store results
         results[img_name] = result_dict
 
@@ -48,8 +49,8 @@ def process_dataset_random_swap(input_path, output_path):
 
 
 if __name__ == "__main__":
-    input_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_v2.json"
-    output_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_with_swap_v2.json"
+    input_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_v3.json"
+    output_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_with_swap_v3.json"
 
     # Set random seed for reproducibility
     random.seed(42)
