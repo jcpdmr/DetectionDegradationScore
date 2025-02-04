@@ -1,6 +1,6 @@
 import os
 import shutil
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
@@ -33,7 +33,14 @@ def apply_compression_artifacts(img_path, output_path, quality):
     with Image.open(img_path) as img:
         if img.mode != "RGB":
             img = img.convert("RGB")
-        img.save(output_path, "JPEG", quality=quality, optimize=True, smooth=2, subsampling="4:4:4")
+        img.save(
+            output_path,
+            "JPEG",
+            quality=quality,
+            optimize=True,
+            smooth=2,
+            subsampling="4:4:4",
+        )
 
 
 def process_single_image(args):
@@ -81,7 +88,7 @@ def process_split(split_name, base_path, quality_values: List[int]):
     # Process images in parallel with progress bar
     results = {}
     num_workers = os.cpu_count()
-    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+    with ThreadPoolExecutor(max_workers=num_workers) as executor:
         for img_name, img_results in tqdm(
             executor.map(process_single_image, process_args),
             total=len(process_args),

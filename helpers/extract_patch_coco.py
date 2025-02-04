@@ -27,7 +27,7 @@ def create_split_directories(base_path, splits=["train", "val", "test"]):
             path.mkdir(parents=True, exist_ok=True)
 
 
-def split_images(image_files, val_ratio=0, test_ratio=0, seed=42):
+def split_images(image_files, val_ratio=0.05, test_ratio=0.05, seed=42):
     """
     Split image files into train, validation and test sets
 
@@ -117,22 +117,37 @@ def process_image(args):
 
 def main():
     # Configuration
-    INPUT_DIR = "../visual_genome"
-    OUTPUT_DIR = "unbalanced_dataset"
+    INPUT_DIRS = [
+        "/andromeda/personal/jdamerini/open_images_v7/train_e",
+        "/andromeda/personal/jdamerini/visual_genome",
+        "/andromeda/personal/jdamerini/train2017",
+    ]
+    OUTPUT_DIR = "/andromeda/personal/jdamerini/unbalenced_dataset"
     TARGET_SIZE = 320  # Target size for the square patches
     MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
     NUM_WORKERS = os.cpu_count()  # Use all available CPU cores
-    MAX_IMAGES = 118287  # Maximum number of images to process
+    MAX_IMAGES = 1000000  # Maximum number of images to process
 
     # Create directory structure
-    # create_split_directories(OUTPUT_DIR)
-    # Get and split image files
-    input_path = Path(INPUT_DIR)
-    image_files = (
-        list(input_path.glob("*.jpg"))
-        + list(input_path.glob("*.jpeg"))
-        + list(input_path.glob("*.png"))
-    )
+    create_split_directories(OUTPUT_DIR)
+
+    # Get image files from all input directories
+    image_files = []
+    for input_dir in INPUT_DIRS:
+        input_path = Path(input_dir)
+        if not input_path.exists():
+            print(f"Warning: Directory {input_dir} does not exist, skipping...")
+            continue
+
+        input_images = (
+            list(input_path.glob("*.jpg"))
+            + list(input_path.glob("*.jpeg"))
+            + list(input_path.glob("*.png"))
+        )
+        image_files.extend(input_images)
+        print(f"Found {len(input_images)} images in {input_dir}")
+
+    print(f"Total images found: {len(image_files)}")
 
     if MAX_IMAGES and MAX_IMAGES < len(image_files):
         random.seed(42)
@@ -165,7 +180,6 @@ def main():
                     desc=f"Extracting {split_name} images",
                 )
             )
-
         # Print split statistics
         processed = sum(1 for r in results if r)
         skipped = len(results) - processed
