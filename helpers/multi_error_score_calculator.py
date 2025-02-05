@@ -137,7 +137,7 @@ def main():
     """
     # Configuration
     device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    DATA_ROOT = "unbalanced_dataset"
+    DATA_ROOT = "/andromeda/personal/jdamerini/unbalanced_dataset"
     OUTPUT_ROOT = "error_scores_analysis/mapping"
     BATCH_SIZE = 128
     MODEL_PATH = "../yolo11m.pt"

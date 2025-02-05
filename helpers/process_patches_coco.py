@@ -111,7 +111,7 @@ def process_split(split_name, base_path, quality_values: List[int]):
 
 
 def main():
-    BASE_PATH = "unbalanced_dataset"
+    BASE_PATH = "/andromeda/personal/jdamerini/unbalanced_dataset"
     splits = ["train"]  # Modified to process only "train" set
     quality_values = [20, 24, 28, 32, 36, 40, 50]
 

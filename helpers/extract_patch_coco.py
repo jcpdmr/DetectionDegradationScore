@@ -27,7 +27,7 @@ def create_split_directories(base_path, splits=["train", "val", "test"]):
             path.mkdir(parents=True, exist_ok=True)
 
 
-def split_images(image_files, val_ratio=0.05, test_ratio=0.05, seed=42):
+def split_images(image_files, val_ratio=0.00, test_ratio=0.00, seed=42):
     """
     Split image files into train, validation and test sets
 
@@ -122,7 +122,7 @@ def main():
         "/andromeda/personal/jdamerini/visual_genome",
         "/andromeda/personal/jdamerini/train2017",
     ]
-    OUTPUT_DIR = "/andromeda/personal/jdamerini/unbalenced_dataset"
+    OUTPUT_DIR = "/andromeda/personal/jdamerini/unbalanced_dataset"
     TARGET_SIZE = 320  # Target size for the square patches
     MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
     NUM_WORKERS = os.cpu_count()  # Use all available CPU cores
