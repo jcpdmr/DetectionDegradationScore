@@ -207,6 +207,111 @@ class QualityAssessmentModel(nn.Module):
         return self.mlp(pooled)
 
 
+class EnhancedBottleneckResidualBlock(nn.Module):
+    def __init__(self, channels, reduction_factor=4):
+        super().__init__()
+        hidden_channels = channels // reduction_factor
+
+        # Bottleneck path
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(channels, hidden_channels, kernel_size=1),
+            nn.BatchNorm2d(hidden_channels),
+            nn.ReLU(inplace=True),
+        )
+
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(hidden_channels),
+            nn.ReLU(inplace=True),
+        )
+
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(
+                hidden_channels * 2, hidden_channels, kernel_size=3, padding=1
+            ),  # *2 per la concatenazione
+            nn.BatchNorm2d(hidden_channels),
+            nn.ReLU(inplace=True),
+        )
+
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(
+                hidden_channels * 2, channels, kernel_size=1
+            ),  # *2 per la concatenazione
+            nn.BatchNorm2d(channels),
+        )
+
+    def forward(self, x):
+        identity = x
+
+        # Prima trasformazione
+        c1 = self.conv1(x)
+
+        # Residuo intermedio 1
+        c2 = self.conv2(c1)
+        c2 = c2 + c1  # Residuo locale
+
+        # Concatenazione e seconda trasformazione
+        c3 = self.conv3(torch.cat([c1, c2], dim=1))
+
+        # Concatenazione finale e proiezione
+        c4 = self.conv4(torch.cat([c2, c3], dim=1))
+
+        # Residuo globale
+        return F.relu(c4 + identity)
+
+
+class BaselineQualityModel(nn.Module):
+    def __init__(self, in_channels=512, dropout=0.2):
+        super().__init__()
+
+        # Direttamente sulla concatenazione delle features
+        self.process_concat = nn.Sequential(
+            EnhancedBottleneckResidualBlock(in_channels * 2),  # opera su 1024 canali
+            EnhancedBottleneckResidualBlock(in_channels * 2),
+        )
+
+        # Riduzione canali e processing finale
+        self.reduce_process = nn.Sequential(
+            nn.Conv2d(in_channels * 2, in_channels, 1),  # riduce a 512
+            EnhancedBottleneckResidualBlock(in_channels),
+            EnhancedBottleneckResidualBlock(in_channels),
+        )
+
+        # MLP finale invariato
+        self.mlp = nn.Sequential(
+            nn.Linear(in_channels, 256),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(256, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(64, 1),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, gt_features, mod_features):
+        # Concatenazione immediata
+        x = torch.cat([gt_features, mod_features], dim=1)
+
+        # Processing della concatenazione
+        x = self.process_concat(x)
+
+        # Riduzione e processing finale
+        x = self.reduce_process(x)
+
+        # Global pooling e MLP
+        x = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)
+        return self.mlp(x)
+
+
+def create_baseline_quality_model() -> BaselineQualityModel:
+    """Creates and initializes the baseline quality assessment model"""
+    return BaselineQualityModel(in_channels=512)
+
+
 def create_quality_model() -> QualityAssessmentModel:
     """Creates and initializes the enhanced quality assessment model"""
     return QualityAssessmentModel(

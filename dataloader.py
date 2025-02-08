@@ -11,16 +11,17 @@ import json
 
 class ImagePairDataset(Dataset):
     """
-    Dataset for loading pairs of original and compressed images
+    Dataset for loading pairs of original and compressed images, with optional error scores
     """
 
-    def __init__(self, root_path: str, split: str):
+    def __init__(self, root_path: str, split: str, scores_root: str = None):
         """
         Initialize dataset
 
         Args:
             root_path: Root directory containing the dataset
             split: Dataset split ('train', 'val', 'test')
+            scores_root: Optional root directory containing error scores
         """
         if split not in ["train", "val", "test"]:
             raise ValueError("Split must be one of: train, val, test")
@@ -29,6 +30,15 @@ class ImagePairDataset(Dataset):
         self.split_path = Path(root_path) / split
         self.gt_path = self.split_path / "extracted"
         self.compressed_path = self.split_path / "compressed"
+
+        # Setup scores if provided
+        self.scores = None
+        if scores_root:
+            scores_path = Path(scores_root) / split / "error_scores.json"
+            if not scores_path.exists():
+                raise RuntimeError(f"Scores file not found: {scores_path}")
+            with open(scores_path) as f:
+                self.scores = json.load(f)
 
         # Verify paths exist
         if not self.gt_path.exists():
@@ -45,6 +55,7 @@ class ImagePairDataset(Dataset):
                 for f in os.listdir(self.gt_path)
                 if f.lower().endswith((".jpg", ".jpeg", ".png"))
                 and (self.compressed_path / f).exists()
+                and (not self.scores or f in self.scores)
             ]
         )
 
@@ -55,17 +66,21 @@ class ImagePairDataset(Dataset):
         self.transform = transforms.ToTensor()
 
     def __len__(self) -> int:
+        """
+        Returns the number of image pairs in the dataset
+        """
         return len(self.image_names)
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """
-        Get image pair
+        Get image pair and optional score
 
         Returns:
             Dictionary containing:
             - gt: Ground truth image tensor [3, H, W]
             - compressed: Compressed image tensor [3, H, W]
             - name: Image filename
+            - score: Error score [1] (if scores provided)
         """
         img_name = self.image_names[idx]
 
@@ -78,7 +93,13 @@ class ImagePairDataset(Dataset):
         compressed_img = cv2.cvtColor(compressed_img, cv2.COLOR_BGR2RGB)
         compressed_tensor = self.transform(compressed_img)
 
-        return {"gt": gt_tensor, "compressed": compressed_tensor, "name": img_name}
+        result = {"gt": gt_tensor, "compressed": compressed_tensor, "name": img_name}
+
+        # Add score if available
+        if self.scores is not None:
+            result["score"] = torch.tensor(self.scores[img_name], dtype=torch.float32)
+
+        return result
 
 
 class MultiCompressionDataset(Dataset):
@@ -217,9 +238,7 @@ class FeatureMapDataset(Dataset):
         )
 
         if not self.feature_names:
-            pass
-            a = 1
-            # raise RuntimeError(f"No valid feature maps found in {self.gt_path}")
+            raise RuntimeError(f"No valid feature maps found in {self.gt_path}")
 
     def __len__(self) -> int:
         return len(self.feature_names)
@@ -257,10 +276,19 @@ class FeatureMapDataset(Dataset):
 
 
 def create_dataloaders(
-    dataset_root: str, batch_size: int, num_workers: int = 4
+    dataset_root: str,
+    batch_size: int,
+    error_scores_root: str = None,
+    num_workers: int = 4,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
-    Create dataloaders for image pairs
+    Create dataloaders for image pairs with optional error scores
+
+    Args:
+        dataset_root: Root directory containing the dataset
+        batch_size: Batch size for the dataloaders
+        scores_root: Optional root directory containing error scores
+        num_workers: Number of workers for data loading
 
     Returns:
         Tuple of (train_loader, val_loader, test_loader)
@@ -268,7 +296,7 @@ def create_dataloaders(
     loaders = {}
 
     for split in ["train", "val", "test"]:
-        dataset = ImagePairDataset(dataset_root, split)
+        dataset = ImagePairDataset(dataset_root, split, error_scores_root)
 
         loaders[split] = DataLoader(
             dataset,

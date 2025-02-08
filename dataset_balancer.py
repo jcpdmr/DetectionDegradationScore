@@ -562,9 +562,9 @@ def validate_dataset(json_file, img_file):
 if __name__ == "__main__":
     N_BINS = 40
     MAX_SCORE = 0.8  # New parameter
-    MULTI_ERROR_SCORES_PATH = "error_scores_analysis/mapping/05_visual_genome_cocotrain17_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444/total/error_scores.json"
-    OUTPUT_BAL_DATASET_JSON = "balanced_dataset_40bins_point8_05_visual_genome_cocotrain17_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.json"
-    OUTPUT_DISTRIBUTION_IMG = "balanced_dataset_40bins_point8_05_visual_genome_cocotrain17_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.png"
+    MULTI_ERROR_SCORES_PATH = "error_scores_analysis/mapping/06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444/total/error_scores.json"
+    OUTPUT_BAL_DATASET_JSON = "balanced_dataset_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.json"
+    OUTPUT_DISTRIBUTION_IMG = "balanced_dataset_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.png"
 
     balancer = DatasetBalancer(
         error_scores_path=MULTI_ERROR_SCORES_PATH,

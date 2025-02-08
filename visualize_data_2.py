@@ -6,7 +6,9 @@ from scipy import stats
 import json
 
 # Load and prepare the data
-with open("test_predictions.json", "r") as f:
+TRIAL = "attempt5_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+
+with open(f"checkpoints/{TRIAL}/test_predictions.json", "r") as f:
     data = json.load(f)
 df = pd.DataFrame(data)
 
@@ -43,6 +45,7 @@ fig.add_trace(
         mode="markers",
         name="Observations",
         text=df["filename"],
+        marker=dict(size=2),
         hovertemplate="<b>File:</b> %{text}<br>"
         + "<b>Error Score:</b> %{x:.3f}<br>"
         + "<b>Distance:</b> %{y:.3f}<br>",
@@ -52,7 +55,7 @@ fig.add_trace(
 )
 
 # Add regression line with equation
-z = np.polyfit(df["error_score"], df["distance"], 1)
+z = np.polyfit(df["error_score"], df["distance"], 3)
 p = np.poly1d(z)
 x_range = np.linspace(df["error_score"].min(), df["error_score"].max(), 100)
 fig.add_trace(
@@ -201,7 +204,7 @@ fig.update_xaxes(title_text="Difference", row=3, col=2)
 fig.update_yaxes(title_text="Density", row=3, col=2)
 
 # Save both interactive and static versions
-fig.write_html("analysis_report_enhanced.html")
+fig.write_html(f"checkpoints/{TRIAL}/analysis_report_enhanced.html")
 
 # Display the figure
 fig.show()

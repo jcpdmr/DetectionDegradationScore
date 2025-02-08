@@ -376,7 +376,7 @@ class DatasetOrganizer:
 
 if __name__ == "__main__":
     # Hardcoded configuration
-    INPUT_PATH = "balanced_dataset_40bins_point8_05_visual_genome_cocotrain17_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.json"
+    INPUT_PATH = "balanced_dataset_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.json"
     OUTPUT_PATH = "split.json"
     VAL_SPLIT = 0.05
     TEST_SPLIT = 0.05
@@ -395,7 +395,7 @@ if __name__ == "__main__":
     # Hardcoded configuration
     CONFIG = {
         "split_file": "split.json",
-        "unbalanced_path": "unbalanced_dataset",
+        "unbalanced_path": "/andromeda/personal/jdamerini/unbalanced_dataset",
         "balanced_path": "balanced_dataset",
         "clean_existing": True,
     }

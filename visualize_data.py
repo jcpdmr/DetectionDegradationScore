@@ -157,14 +157,14 @@ def create_interactive_analysis(json_path):
 
 def main():
     # Specify the path to your JSON file
-    base_path = ""  # Modifica questo percorso
-    file_name = "test_predictions_visgen.json"  # Modifica questo nome file
+    TRIAL = "attempt5_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    file_name = f"checkpoints/{TRIAL}/test_predictions.json"
 
-    fig = create_interactive_analysis(os.path.join(base_path, file_name))
+    fig = create_interactive_analysis(json_path=file_name)
     fig.show()
 
     # Optional: save as HTML file
-    fig.write_html(os.path.join(base_path, "interactive_analysis.html"))
+    fig.write_html(f"checkpoints/{TRIAL}/interactive_analysis.html")
 
 
 if __name__ == "__main__":
