@@ -61,29 +61,29 @@ class BinDistributionVisualizer:
             f.write("-" * 80 + "\n\n\n")
 
 
-class WarmupScheduler:
-    def __init__(self, optimizer, warmup_epochs, total_epochs, initial_lr):
-        self.optimizer = optimizer
-        self.warmup_epochs = warmup_epochs
-        self.initial_lr = initial_lr
-        self.current_epoch = 0
-        self.total_epochs = total_epochs
+# class WarmupScheduler:
+#     def __init__(self, optimizer, warmup_epochs, total_epochs, initial_lr):
+#         self.optimizer = optimizer
+#         self.warmup_epochs = warmup_epochs
+#         self.initial_lr = initial_lr
+#         self.current_epoch = 0
+#         self.total_epochs = total_epochs
 
-    def step(self):
-        self.current_epoch += 1
-        if self.current_epoch <= self.warmup_epochs:
-            lr_scale = self.current_epoch / self.warmup_epochs
-            for param_group in self.optimizer.param_groups:
-                param_group["lr"] = self.initial_lr * lr_scale
+#     def step(self):
+#         self.current_epoch += 1
+#         if self.current_epoch <= self.warmup_epochs:
+#             lr_scale = self.current_epoch / self.warmup_epochs
+#             for param_group in self.optimizer.param_groups:
+#                 param_group["lr"] = self.initial_lr * lr_scale
 
-    def state_dict(self):
-        """Save the current state of the scheduler."""
-        return {
-            "current_epoch": self.current_epoch,
-            "warmup_epochs": self.warmup_epochs,
-            "total_epochs": self.total_epochs,
-            "initial_lr": self.initial_lr,
-        }
+#     def state_dict(self):
+#         """Save the current state of the scheduler."""
+#         return {
+#             "current_epoch": self.current_epoch,
+#             "warmup_epochs": self.warmup_epochs,
+#             "total_epochs": self.total_epochs,
+#             "initial_lr": self.initial_lr,
+#         }
 
 
 class QualityTrainer:
@@ -133,8 +133,8 @@ class QualityTrainer:
         ).to(device)
 
         # Initialize loss
-        # self.loss = nn.MSELoss()
-        self.loss = nn.SmoothL1Loss(beta=0.2)
+        self.loss = nn.MSELoss()
+        # self.loss = nn.SmoothL1Loss(beta=0.2)
         # self.loss = nn.L1Loss()
 
         # Setup parameter groups for different learning rates
@@ -177,18 +177,18 @@ class QualityTrainer:
             weight_decay=0.05,
         )
 
-        # Warmup scheduler
-        num_warmup_epochs = 4
-        self.warmup_scheduler = WarmupScheduler(
-            self.optimizer,
-            warmup_epochs=num_warmup_epochs,
-            total_epochs=num_epochs,
-            initial_lr=learning_rate,
-        )
-
         # Setup learning rate scheduler
-        self.plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode="min", factor=0.5, patience=3, verbose=True
+        steps_per_epoch = 10 if try_run else len(train_loader)
+        self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer=self.optimizer,
+            max_lr=1e-4,  # picco a 1e-4
+            epochs=num_epochs,
+            steps_per_epoch=steps_per_epoch,
+            pct_start=0.20,  # 20% degli step per arrivare al picco
+            div_factor=10,  # LR iniziale = 1e-4/10 = 1e-5
+            final_div_factor=100,  # LR finale = 1e-4/100 = 1e-6
+            three_phase=False,  # usa two-phase
+            anneal_strategy="cos",  # transizione più smooth
         )
 
         # Setup checkpointing
@@ -247,6 +247,7 @@ class QualityTrainer:
 
             # Update weights
             self.optimizer.step()
+            self.scheduler.step()  # Aggiornamento del learning rate dopo ogni batch
             self.optimizer.zero_grad()
 
             # Update metrics
@@ -343,7 +344,7 @@ class QualityTrainer:
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": self.warmup_scheduler.state_dict(),
+            "scheduler_state_dict": self.scheduler.state_dict(),
             "metrics": metrics,
         }
 
@@ -383,13 +384,8 @@ class QualityTrainer:
         best_val_loss = float("inf")
         patience_counter = 0
 
-        # Forza il primo step del warmup scheduler
-        self.warmup_scheduler.step()  # Assicura che il primo epoch abbia il LR corretto
-
         for epoch in range(num_epochs):
-            current_lr = self.optimizer.param_groups[0][
-                "lr"
-            ]  # Accedi al learning rate del primo gruppo di parametri
+            current_lr = self.optimizer.param_groups[0]["lr"]
             print(f"\nEpoch {epoch + 1}/{num_epochs},  Learning Rate: {current_lr:.9f}")
 
             # Training and validation
@@ -399,13 +395,6 @@ class QualityTrainer:
                 total_epochs=+num_epochs,
                 val_log_file=f"{self.checkpoint_dir}/val_log.txt",
             )
-
-            # Applica ReduceLROnPlateau basato sulla validazione
-            self.plateau_scheduler.step(val_metrics["val_loss"])
-
-            # Applica il warmup scheduler (solo se non è terminato)
-            if epoch < self.warmup_scheduler.warmup_epochs:
-                self.warmup_scheduler.step()
 
             # Log metrics
             current_lr = self.optimizer.param_groups[0]["lr"]
@@ -432,13 +421,13 @@ def main():
     Main training script.
     """
     # Configuration
-    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
     BATCH_SIZE = 230
     NUM_EPOCHS = 50
     LEARNING_RATE = 1e-4
-    CHECKPOINT_DIR = "checkpoints/attempt11_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    CHECKPOINT_DIR = "checkpoints/attempt12_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     TRY_RUN = False
     USE_ONLINE_WANDB = False
 

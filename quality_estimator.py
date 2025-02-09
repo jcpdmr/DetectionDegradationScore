@@ -223,15 +223,32 @@ class SimpleBottleneckBlock(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.conv3 = nn.Sequential(
+            nn.Conv2d(hidden_channels, hidden_channels, 3, padding=1),
+            nn.BatchNorm2d(hidden_channels),
+            # nn.ReLU(inplace=True),
+        )
+        self.conv4 = nn.Sequential(
             nn.Conv2d(hidden_channels, channels, 1),
             nn.BatchNorm2d(channels),
         )
 
     def forward(self, x):
         identity = x
-        out = self.conv1(x)
-        out = self.conv2(out)
+
+        # Prima connessione residua
+        conv1_out = self.conv1(x)
+
+        # Percorso principale
+        out = self.conv2(conv1_out)
         out = self.conv3(out)
+
+        # Aggiungi il residuo interno e applica ReLU
+        out = F.relu(out + conv1_out)
+
+        # Percorso finale
+        out = self.conv4(out)
+
+        # Connessione residua principale
         return F.relu(out + identity)
 
 
@@ -240,33 +257,25 @@ class BaselineQualityModel(nn.Module):
         super().__init__()
 
         # Riduzione immediata dei canali
-        self.reduce = nn.Sequential(
-            # 1
-            nn.Conv2d(in_channels * 2, in_channels // 8, 1),
-            nn.BatchNorm2d(in_channels // 8),
-            nn.ReLU(inplace=True),
-        )
+        self.reduce = nn.Conv2d(in_channels * 2, in_channels, 1)
 
         # Solo due blocchi residuali
-        # self.process = nn.Sequential(
-        #     SimpleBottleneckBlock(in_channels),
-        #     SimpleBottleneckBlock(in_channels),
-        #     SimpleBottleneckBlock(in_channels),
-        #     SimpleBottleneckBlock(in_channels),
-        #     SimpleBottleneckBlock(in_channels),
-        #     SimpleBottleneckBlock(in_channels),
-        #     SimpleBottleneckBlock(in_channels),
-        #     SimpleBottleneckBlock(in_channels),
-        # )
+        self.process = nn.Sequential(
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
+        )
 
         # MLP più semplice
         self.mlp = nn.Sequential(
-            nn.Linear((in_channels // 8) * 2, 32),
+            nn.Linear(in_channels * 2, 128),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(128, 32),
             nn.BatchNorm1d(32),
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(32, 1),
-            nn.Sigmoid(),
         )
 
     def forward(self, gt_features, mod_features):
@@ -277,7 +286,7 @@ class BaselineQualityModel(nn.Module):
         x = self.reduce(x)  # [B, 512, H, W]
 
         # Processing con i bottleneck blocks
-        # x = self.process(x)  # [B, 512, H, W]
+        x = self.process(x)  # [B, 512, H, W]
 
         # Global average pooling
         avg_pool = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)  # [B, 512]
