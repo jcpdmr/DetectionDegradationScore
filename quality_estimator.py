@@ -207,104 +207,81 @@ class QualityAssessmentModel(nn.Module):
         return self.mlp(pooled)
 
 
-class EnhancedBottleneckResidualBlock(nn.Module):
-    def __init__(self, channels, reduction_factor=4):
+class SimpleBottleneckBlock(nn.Module):
+    def __init__(self, channels, reduction_factor=8):
         super().__init__()
         hidden_channels = channels // reduction_factor
 
-        # Bottleneck path
         self.conv1 = nn.Sequential(
-            nn.Conv2d(channels, hidden_channels, kernel_size=1),
+            nn.Conv2d(channels, hidden_channels, 1),
             nn.BatchNorm2d(hidden_channels),
             nn.ReLU(inplace=True),
         )
-
         self.conv2 = nn.Sequential(
-            nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
+            nn.Conv2d(hidden_channels, hidden_channels, 3, padding=1),
             nn.BatchNorm2d(hidden_channels),
             nn.ReLU(inplace=True),
         )
-
         self.conv3 = nn.Sequential(
-            nn.Conv2d(
-                hidden_channels * 2, hidden_channels, kernel_size=3, padding=1
-            ),  # *2 per la concatenazione
-            nn.BatchNorm2d(hidden_channels),
-            nn.ReLU(inplace=True),
-        )
-
-        self.conv4 = nn.Sequential(
-            nn.Conv2d(
-                hidden_channels * 2, channels, kernel_size=1
-            ),  # *2 per la concatenazione
+            nn.Conv2d(hidden_channels, channels, 1),
             nn.BatchNorm2d(channels),
         )
 
     def forward(self, x):
         identity = x
-
-        # Prima trasformazione
-        c1 = self.conv1(x)
-
-        # Residuo intermedio 1
-        c2 = self.conv2(c1)
-        c2 = c2 + c1  # Residuo locale
-
-        # Concatenazione e seconda trasformazione
-        c3 = self.conv3(torch.cat([c1, c2], dim=1))
-
-        # Concatenazione finale e proiezione
-        c4 = self.conv4(torch.cat([c2, c3], dim=1))
-
-        # Residuo globale
-        return F.relu(c4 + identity)
+        out = self.conv1(x)
+        out = self.conv2(out)
+        out = self.conv3(out)
+        return F.relu(out + identity)
 
 
 class BaselineQualityModel(nn.Module):
     def __init__(self, in_channels=512, dropout=0.2):
         super().__init__()
 
-        # Direttamente sulla concatenazione delle features
-        self.process_concat = nn.Sequential(
-            EnhancedBottleneckResidualBlock(in_channels * 2),  # opera su 1024 canali
-            EnhancedBottleneckResidualBlock(in_channels * 2),
+        # Riduzione immediata dei canali
+        self.reduce = nn.Conv2d(in_channels * 2, in_channels, 1)
+
+        # Solo due blocchi residuali
+        self.process = nn.Sequential(
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
+            SimpleBottleneckBlock(in_channels),
         )
 
-        # Riduzione canali e processing finale
-        self.reduce_process = nn.Sequential(
-            nn.Conv2d(in_channels * 2, in_channels, 1),  # riduce a 512
-            EnhancedBottleneckResidualBlock(in_channels),
-            EnhancedBottleneckResidualBlock(in_channels),
-        )
-
-        # MLP finale invariato
+        # MLP più semplice
         self.mlp = nn.Sequential(
-            nn.Linear(in_channels, 256),
+            nn.BatchNorm1d(in_channels),
+            nn.Linear(in_channels, 64),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(256, 64),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(64, 64),
-            nn.ReLU(),
-            nn.Dropout(dropout),
+            nn.BatchNorm1d(64),
             nn.Linear(64, 1),
             nn.Sigmoid(),
         )
 
     def forward(self, gt_features, mod_features):
-        # Concatenazione immediata
-        x = torch.cat([gt_features, mod_features], dim=1)
+        # Concatenazione delle features
+        x = torch.cat([gt_features, mod_features], dim=1)  # [B, 1024, H, W]
 
-        # Processing della concatenazione
-        x = self.process_concat(x)
+        # Riduzione dei canali
+        x = self.reduce(x)  # [B, 512, H, W]
 
-        # Riduzione e processing finale
-        x = self.reduce_process(x)
+        # Processing con i bottleneck blocks
+        x = self.process(x)  # [B, 512, H, W]
 
-        # Global pooling e MLP
-        x = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)
-        return self.mlp(x)
+        # Global average pooling
+        x = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)  # [B, 512]
+
+        # MLP finale
+        x = self.mlp(x)  # [B, 1]
+
+        return x
 
 
 def create_baseline_quality_model() -> BaselineQualityModel:

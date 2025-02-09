@@ -6,13 +6,52 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 from tqdm import tqdm
 import wandb
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import math
 import os
+from itertools import islice
 
 from quality_estimator import create_quality_model, create_baseline_quality_model
 from extractor import load_feature_extractor, YOLO11mExtractor
 
+
+class BinDistributionVisualizer:
+    """Class to visualize the distribution of predictions across bins."""
+
+    def __init__(self, n_bins: int = 40, max_score: float = 0.8):
+        """
+        Initialize the bin distribution visualizer.
+
+        Args:
+            n_bins (int): Number of bins to divide the predictions into
+            max_score (float): Maximum score value to consider
+        """
+        self.n_bins = n_bins
+        self.max_score = max_score
+        self.bin_edges = np.linspace(0, max_score, n_bins + 1)
+
+    def visualize(self, predictions: List[float]) -> None:
+        """
+        Visualize the distribution of predictions across bins.
+
+        Args:
+            predictions (List[float]): List of prediction values
+        """
+        # Calculate histogram
+        counts, _ = np.histogram(predictions, bins=self.bin_edges)
+        max_count = max(counts)
+
+        print("\nPrediction Distribution:")
+        print("-" * 80)
+        
+        for bin_ in range(self.n_bins):
+            count = counts[bin_]
+            bar_length = int((count / max_count) * 50) if max_count > 0 else 0
+            print(
+                f"Bin {bin_:2d} [{self.bin_edges[bin_]:.3f}-{self.bin_edges[bin_ + 1]:.3f}]: "
+                f"{'#' * bar_length} ({count})"
+            )
+        print("-" * 80)
 
 class WarmupScheduler:
     def __init__(self, optimizer, warmup_epochs, total_epochs, initial_lr):
@@ -66,6 +105,8 @@ class QualityTrainer:
         checkpoint_dir: Optional[str] = None,
         num_epochs: int = 100,
         yolo_weights_path: str = "yolo11m.pt",
+        try_run: bool = False,
+        use_online_wandb=True,
     ):
         """
         Initialize the trainer with all necessary components.
@@ -76,10 +117,13 @@ class QualityTrainer:
             device: Device to run training on
             learning_rate: Initial learning rate
             checkpoint_dir: Directory to save checkpoints
+            try_run: Whether to run a quick test
         """
         self.device = device
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.try_run = try_run
+        self.use_online_wandb = use_online_wandb
 
         # Initialize model
         # self.model = create_quality_model().to(device)
@@ -92,7 +136,8 @@ class QualityTrainer:
 
         # Initialize loss
         # self.loss = nn.MSELoss()
-        self.loss = nn.SmoothL1Loss(beta=0.2)
+        # self.loss = nn.SmoothL1Loss(beta=0.2)
+        self.loss = nn.L1Loss()
 
         # Setup parameter groups for different learning rates
         # attention_params = []
@@ -131,7 +176,7 @@ class QualityTrainer:
                     "initial_lr_scale": 1.0,  # Manteniamo initial_lr_scale per compatibilità
                 }
             ],
-            weight_decay=0.01,
+            weight_decay=0.1,
         )
 
         # Warmup scheduler, 10% of total epochs
@@ -167,7 +212,17 @@ class QualityTrainer:
         self.model.train()
         running_loss = 0.0
 
-        for batch in tqdm(self.train_loader, desc="Training"):
+        # Determine number of batches to run
+        num_batches = 5 if self.try_run else len(self.train_loader)
+
+        # Prepare iterator with the first 5 batches if try_run is enabled
+        train_iterator = (
+            islice(self.train_loader, 5) if self.try_run else self.train_loader
+        )
+
+        for i, batch in enumerate(
+            tqdm(train_iterator, total=num_batches, desc="Training", ncols=120)
+        ):
             # Process batch
             gt = batch["gt"].to(self.device)
             compressed = batch["compressed"].to(self.device)
@@ -199,13 +254,14 @@ class QualityTrainer:
             # Update metrics
             running_loss += loss.item()
 
+        print(f"Train loss: {running_loss / num_batches}")
         # Calculate epoch metrics
-        return {"train_loss": running_loss / len(self.train_loader)}
+        return {"train_loss": running_loss / num_batches}
 
     @torch.no_grad()
     def validate(self) -> Dict[str, float]:
         """
-        Validate model with Monte Carlo dropout averaging.
+        Validate model.
 
         Returns:
             Dictionary of validation metrics
@@ -214,22 +270,29 @@ class QualityTrainer:
         all_preds = []
         all_targets = []
 
-        for batch in tqdm(self.val_loader, desc="Validating"):
+        # Determine number of batches to run
+        num_batches = 5 if self.try_run else len(self.val_loader)
+
+        # Prepare iterator with the first 5 batches if try_run is enabled
+        val_iterator = islice(self.val_loader, 5) if self.try_run else self.val_loader
+
+        # Set model to eval mode
+        self.model.eval()
+
+        # Usa il numero corretto di batch per tqdm
+        for batch in tqdm(
+            val_iterator, total=num_batches, desc="Validating", ncols=120
+        ):
             gt = batch["gt"].to(self.device)
             compressed = batch["compressed"].to(self.device)
-            # gt_features = batch["gt_features"].to(self.device)
-            # mod_features = batch["compressed_features"].to(self.device)
             scores = batch["score"].to(self.device)
+
             gt_features, mod_features = self.extractor.extract_features(
                 img_gt=gt, img_mod=compressed
             )
 
-            # Monte Carlo dropout predictions
-            predictions = torch.zeros_like(scores)
-            for _ in range(self.mc_dropout_samples):
-                self.model.train()  # Enable dropout
-                predictions += self.model(gt_features, mod_features).squeeze()
-            predictions /= self.mc_dropout_samples
+            # Single forward pass
+            predictions = self.model(gt_features, mod_features).squeeze()
 
             # Calculate loss
             loss = self.loss(predictions, scores)
@@ -239,12 +302,18 @@ class QualityTrainer:
             all_preds.extend(predictions.cpu().numpy())
             all_targets.extend(scores.cpu().numpy())
 
+        visualizer = BinDistributionVisualizer(n_bins=40, max_score=0.8)
+        visualizer.visualize(all_preds)
+
+        print(f"Val loss: {running_loss / num_batches}")
+
         # Calculate metrics
         metrics = {
-            "val_loss": running_loss / len(self.val_loader),
+            "val_loss": running_loss / num_batches,
             "val_mean_pred": np.mean(all_preds),
             "val_std_pred": np.std(all_preds),
         }
+
         wandb.log(
             {
                 "predictions_dist": wandb.Histogram(all_preds),
@@ -299,6 +368,7 @@ class QualityTrainer:
         """
         wandb.init(
             project="quality-assessment",
+            mode="offline" if (self.try_run or not self.use_online_wandb) else "online",
             config={
                 "learning_rate": self.optimizer.param_groups[0]["lr"],
                 "batch_size": self.train_loader.batch_size,
@@ -345,13 +415,15 @@ def main():
     Main training script.
     """
     # Configuration
-    DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 128
+    BATCH_SIZE = 230
     NUM_EPOCHS = 30
     LEARNING_RATE = 1e-4
-    CHECKPOINT_DIR = "checkpoints/attempt6_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    CHECKPOINT_DIR = "checkpoints/attempt10_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    TRY_RUN = False
+    USE_ONLINE_WANDB = False
 
     # Create dataloaders
     # from dataloader import create_feature_dataloaders
@@ -380,6 +452,8 @@ def main():
         checkpoint_dir=CHECKPOINT_DIR,
         num_epochs=NUM_EPOCHS,
         yolo_weights_path="yolo11m.pt",
+        try_run=TRY_RUN,
+        use_online_wandb=USE_ONLINE_WANDB,
     )
 
     trainer.train(num_epochs=NUM_EPOCHS)

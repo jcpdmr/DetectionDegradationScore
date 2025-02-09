@@ -8,7 +8,8 @@ unbalanced_dataset/
 balanced_dataset/
 feature_extracted/
 wandb/
-checkpoints/
+checkpoints/*/*
+!checkpoints/*/best_model.pt
 prediction_results
 videos/
 draw/

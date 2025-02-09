@@ -1,4 +1,3 @@
-from torchmetrics.detection.mean_ap import MeanAveragePrecision
 import torch
 from typing import List, Dict
 
@@ -39,37 +38,6 @@ def format_yolo_predictions(yolo_predictions, is_ground_truth=False):
             {"boxes": boxes, "labels": labels, "scores": scores}
         )
     return formatted_predictions
-
-
-def calculate_batch_mAP(gt_predictions, mod_predictions):
-    """
-    Calculate mean Average Precision between ground truth and modified predictions
-
-    Args:
-        gt_predictions: Ground truth predictions from YOLO
-        mod_predictions: Predictions on modified images
-
-    Returns:
-        Scalar tensor containing mAP score
-
-    Note:
-        Ground truth predictions are treated differently by setting their
-        confidence scores to 1.0, as they represent the "true" detections.
-        Modified predictions keep their original confidence scores as they
-        represent the model's uncertainty in its predictions.
-    """
-    metric = MeanAveragePrecision()
-
-    # Format predictions, specifying which ones are ground truth
-    gt_formatted = format_yolo_predictions(gt_predictions, is_ground_truth=True)
-    mod_formatted = format_yolo_predictions(mod_predictions, is_ground_truth=False)
-
-    # Update metric with formatted predictions
-    metric.update(mod_formatted, gt_formatted)
-
-    # Compute and return mAP
-    results = metric.compute()
-    return results["map"]
 
 
 def match_predictions(
