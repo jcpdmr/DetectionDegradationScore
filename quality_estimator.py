@@ -240,28 +240,32 @@ class BaselineQualityModel(nn.Module):
         super().__init__()
 
         # Riduzione immediata dei canali
-        self.reduce = nn.Conv2d(in_channels * 2, in_channels, 1)
+        self.reduce = nn.Sequential(
+            # 1
+            nn.Conv2d(in_channels * 2, in_channels // 8, 1),
+            nn.BatchNorm2d(in_channels // 8),
+            nn.ReLU(inplace=True),
+        )
 
         # Solo due blocchi residuali
-        self.process = nn.Sequential(
-            SimpleBottleneckBlock(in_channels),
-            SimpleBottleneckBlock(in_channels),
-            SimpleBottleneckBlock(in_channels),
-            SimpleBottleneckBlock(in_channels),
-            SimpleBottleneckBlock(in_channels),
-            SimpleBottleneckBlock(in_channels),
-            SimpleBottleneckBlock(in_channels),
-            SimpleBottleneckBlock(in_channels),
-        )
+        # self.process = nn.Sequential(
+        #     SimpleBottleneckBlock(in_channels),
+        #     SimpleBottleneckBlock(in_channels),
+        #     SimpleBottleneckBlock(in_channels),
+        #     SimpleBottleneckBlock(in_channels),
+        #     SimpleBottleneckBlock(in_channels),
+        #     SimpleBottleneckBlock(in_channels),
+        #     SimpleBottleneckBlock(in_channels),
+        #     SimpleBottleneckBlock(in_channels),
+        # )
 
         # MLP più semplice
         self.mlp = nn.Sequential(
-            nn.BatchNorm1d(in_channels),
-            nn.Linear(in_channels, 64),
+            nn.Linear((in_channels // 8) * 2, 32),
+            nn.BatchNorm1d(32),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.BatchNorm1d(64),
-            nn.Linear(64, 1),
+            nn.Linear(32, 1),
             nn.Sigmoid(),
         )
 
@@ -273,10 +277,14 @@ class BaselineQualityModel(nn.Module):
         x = self.reduce(x)  # [B, 512, H, W]
 
         # Processing con i bottleneck blocks
-        x = self.process(x)  # [B, 512, H, W]
+        # x = self.process(x)  # [B, 512, H, W]
 
         # Global average pooling
-        x = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)  # [B, 512]
+        avg_pool = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)  # [B, 512]
+        max_pool = F.adaptive_max_pool2d(x, 1).squeeze(-1).squeeze(-1)  # [B, C]
+
+        # Concateno i due pooling
+        x = torch.cat([avg_pool, max_pool], dim=1)  # [B, C*2]
 
         # MLP finale
         x = self.mlp(x)  # [B, 1]

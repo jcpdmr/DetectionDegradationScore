@@ -30,53 +30,51 @@ class BinDistributionVisualizer:
         self.max_score = max_score
         self.bin_edges = np.linspace(0, max_score, n_bins + 1)
 
-    def visualize(self, predictions: List[float]) -> None:
+    def visualize(
+        self, predictions: List[float], epoch: int, total_epochs: int, output_file: str
+    ) -> None:
         """
-        Visualize the distribution of predictions across bins.
+        Write prediction distribution to file with epoch information.
 
         Args:
             predictions (List[float]): List of prediction values
+            epoch (int): Current epoch number
+            total_epochs (int): Total number of epochs
+            output_file (str): Path to output file
         """
         # Calculate histogram
         counts, _ = np.histogram(predictions, bins=self.bin_edges)
         max_count = max(counts)
 
-        print("\nPrediction Distribution:")
-        print("-" * 80)
-        
-        for bin_ in range(self.n_bins):
-            count = counts[bin_]
-            bar_length = int((count / max_count) * 50) if max_count > 0 else 0
-            print(
-                f"Bin {bin_:2d} [{self.bin_edges[bin_]:.3f}-{self.bin_edges[bin_ + 1]:.3f}]: "
-                f"{'#' * bar_length} ({count})"
-            )
-        print("-" * 80)
+        with open(output_file, "a") as f:
+            f.write(f"Epoch: {epoch}/{total_epochs}")
+            f.write("\nPrediction Distribution\n")
+            f.write("-" * 80 + "\n")
+
+            for bin_ in range(self.n_bins):
+                count = counts[bin_]
+                bar_length = int((count / max_count) * 50) if max_count > 0 else 0
+                f.write(
+                    f"Bin {bin_:2d} [{self.bin_edges[bin_]:.3f}-{self.bin_edges[bin_ + 1]:.3f}]: "
+                    f"{'#' * bar_length} ({count})\n"
+                )
+            f.write("-" * 80 + "\n\n\n")
+
 
 class WarmupScheduler:
     def __init__(self, optimizer, warmup_epochs, total_epochs, initial_lr):
         self.optimizer = optimizer
         self.warmup_epochs = warmup_epochs
-        self.total_epochs = total_epochs
         self.initial_lr = initial_lr
         self.current_epoch = 0
+        self.total_epochs = total_epochs
 
     def step(self):
         self.current_epoch += 1
         if self.current_epoch <= self.warmup_epochs:
-            # Linear warmup
-            lr_scale = self.current_epoch / max(1, self.warmup_epochs)
-        else:
-            # Cosine decay after warmpu
-            progress = (self.current_epoch - self.warmup_epochs) / max(
-                1, self.total_epochs - self.warmup_epochs
-            )
-            lr_scale = max(0.0, 0.5 * (1.0 + math.cos(math.pi * progress)))
-
-        for param_group in self.optimizer.param_groups:
-            param_group["lr"] = (
-                self.initial_lr * lr_scale * param_group["initial_lr_scale"]
-            )
+            lr_scale = self.current_epoch / self.warmup_epochs
+            for param_group in self.optimizer.param_groups:
+                param_group["lr"] = self.initial_lr * lr_scale
 
     def state_dict(self):
         """Save the current state of the scheduler."""
@@ -136,8 +134,8 @@ class QualityTrainer:
 
         # Initialize loss
         # self.loss = nn.MSELoss()
-        # self.loss = nn.SmoothL1Loss(beta=0.2)
-        self.loss = nn.L1Loss()
+        self.loss = nn.SmoothL1Loss(beta=0.2)
+        # self.loss = nn.L1Loss()
 
         # Setup parameter groups for different learning rates
         # attention_params = []
@@ -176,22 +174,22 @@ class QualityTrainer:
                     "initial_lr_scale": 1.0,  # Manteniamo initial_lr_scale per compatibilità
                 }
             ],
-            weight_decay=0.1,
+            weight_decay=0.05,
         )
 
-        # Warmup scheduler, 10% of total epochs
-        num_warmup_epochs = int(num_epochs * 0.1)
-        self.scheduler = WarmupScheduler(
+        # Warmup scheduler
+        num_warmup_epochs = 4
+        self.warmup_scheduler = WarmupScheduler(
             self.optimizer,
             warmup_epochs=num_warmup_epochs,
             total_epochs=num_epochs,
             initial_lr=learning_rate,
         )
 
-        # # Setup learning rate scheduler
-        # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        #     self.optimizer, mode="min", factor=0.5, patience=5, verbose=True
-        # )
+        # Setup learning rate scheduler
+        self.plateau_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, mode="min", factor=0.5, patience=3, verbose=True
+        )
 
         # Setup checkpointing
         self.checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir else None
@@ -213,11 +211,11 @@ class QualityTrainer:
         running_loss = 0.0
 
         # Determine number of batches to run
-        num_batches = 5 if self.try_run else len(self.train_loader)
+        num_batches = 10 if self.try_run else len(self.train_loader)
 
-        # Prepare iterator with the first 5 batches if try_run is enabled
+        # Prepare iterator with the first 10 batches if try_run is enabled
         train_iterator = (
-            islice(self.train_loader, 5) if self.try_run else self.train_loader
+            islice(self.train_loader, 10) if self.try_run else self.train_loader
         )
 
         for i, batch in enumerate(
@@ -254,12 +252,12 @@ class QualityTrainer:
             # Update metrics
             running_loss += loss.item()
 
-        print(f"Train loss: {running_loss / num_batches}")
+        print(f"Train loss: {(running_loss / num_batches):.6f}")
         # Calculate epoch metrics
         return {"train_loss": running_loss / num_batches}
 
     @torch.no_grad()
-    def validate(self) -> Dict[str, float]:
+    def validate(self, current_epoch, total_epochs, val_log_file) -> Dict[str, float]:
         """
         Validate model.
 
@@ -303,9 +301,14 @@ class QualityTrainer:
             all_targets.extend(scores.cpu().numpy())
 
         visualizer = BinDistributionVisualizer(n_bins=40, max_score=0.8)
-        visualizer.visualize(all_preds)
+        visualizer.visualize(
+            predictions=all_preds,
+            epoch=current_epoch,
+            total_epochs=total_epochs,
+            output_file=val_log_file,
+        )
 
-        print(f"Val loss: {running_loss / num_batches}")
+        print(f"Val loss: {(running_loss / num_batches):.6f}")
 
         # Calculate metrics
         metrics = {
@@ -340,13 +343,13 @@ class QualityTrainer:
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "scheduler_state_dict": self.scheduler.state_dict(),
+            "scheduler_state_dict": self.warmup_scheduler.state_dict(),
             "metrics": metrics,
         }
 
         # Save regular checkpoint
-        path = self.checkpoint_dir / f"checkpoint_epoch_{epoch}.pt"
-        torch.save(checkpoint, path)
+        # path = self.checkpoint_dir / f"checkpoint_epoch_{epoch}.pt"
+        # torch.save(checkpoint, path)
 
         # Save best model separately
         if is_best:
@@ -357,7 +360,7 @@ class QualityTrainer:
     def train(
         self,
         num_epochs: int,
-        early_stopping_patience: int = 10,
+        early_stopping_patience: int = 15,
     ) -> None:
         """
         Complete training loop with validation and early stopping.
@@ -380,15 +383,29 @@ class QualityTrainer:
         best_val_loss = float("inf")
         patience_counter = 0
 
+        # Forza il primo step del warmup scheduler
+        self.warmup_scheduler.step()  # Assicura che il primo epoch abbia il LR corretto
+
         for epoch in range(num_epochs):
-            print(f"\nEpoch {epoch + 1}/{num_epochs}")
+            current_lr = self.optimizer.param_groups[0][
+                "lr"
+            ]  # Accedi al learning rate del primo gruppo di parametri
+            print(f"\nEpoch {epoch + 1}/{num_epochs},  Learning Rate: {current_lr:.9f}")
 
             # Training and validation
             train_metrics = self.train_epoch()
-            val_metrics = self.validate()
+            val_metrics = self.validate(
+                current_epoch=epoch + 1,
+                total_epochs=+num_epochs,
+                val_log_file=f"{self.checkpoint_dir}/val_log.txt",
+            )
 
-            # Update learning rate scheduler
-            self.scheduler.step()
+            # Applica ReduceLROnPlateau basato sulla validazione
+            self.plateau_scheduler.step(val_metrics["val_loss"])
+
+            # Applica il warmup scheduler (solo se non è terminato)
+            if epoch < self.warmup_scheduler.warmup_epochs:
+                self.warmup_scheduler.step()
 
             # Log metrics
             current_lr = self.optimizer.param_groups[0]["lr"]
@@ -401,7 +418,7 @@ class QualityTrainer:
                 self.save_checkpoint(epoch, val_metrics, is_best=True)
             else:
                 patience_counter += 1
-                self.save_checkpoint(epoch, val_metrics, is_best=False)
+                # self.save_checkpoint(epoch, val_metrics, is_best=False)
 
             if patience_counter >= early_stopping_patience:
                 print(f"\nEarly stopping triggered after {epoch + 1} epochs")
@@ -419,9 +436,9 @@ def main():
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
     BATCH_SIZE = 230
-    NUM_EPOCHS = 30
+    NUM_EPOCHS = 50
     LEARNING_RATE = 1e-4
-    CHECKPOINT_DIR = "checkpoints/attempt10_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    CHECKPOINT_DIR = "checkpoints/attempt11_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     TRY_RUN = False
     USE_ONLINE_WANDB = False
 
