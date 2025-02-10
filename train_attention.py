@@ -7,12 +7,44 @@ from pathlib import Path
 from tqdm import tqdm
 import wandb
 from typing import Dict, Optional, List
-import math
 import os
 from itertools import islice
 
 from quality_estimator import create_quality_model, create_baseline_quality_model
 from extractor import load_feature_extractor, YOLO11mExtractor
+
+
+class BoundedMSELoss(nn.Module):
+    def __init__(self, penalty_weight=10.0):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.penalty_weight = penalty_weight
+
+    def forward(self, pred, target):
+        # MSE di base
+        mse_loss = self.mse(pred, target)
+
+        # Penalità quadratica per valori fuori range
+        below_mask = pred < 0
+        above_mask = pred > 0.8
+
+        below_penalty = (
+            torch.mean(pred[below_mask] ** 2)
+            if below_mask.any()
+            else torch.tensor(0.0).to(pred.device)
+        )
+        above_penalty = (
+            torch.mean((pred[above_mask] - 0.8) ** 2)
+            if above_mask.any()
+            else torch.tensor(0.0).to(pred.device)
+        )
+
+        boundary_loss = below_penalty + above_penalty
+
+        # Combina le loss
+        total_loss = mse_loss + self.penalty_weight * boundary_loss
+
+        return total_loss, mse_loss, boundary_loss
 
 
 class BinDistributionVisualizer:
@@ -105,6 +137,8 @@ class QualityTrainer:
         yolo_weights_path: str = "yolo11m.pt",
         try_run: bool = False,
         use_online_wandb=True,
+        attempt: int = 0,
+        batch_size: int = 128,
     ):
         """
         Initialize the trainer with all necessary components.
@@ -122,6 +156,8 @@ class QualityTrainer:
         self.val_loader = val_loader
         self.try_run = try_run
         self.use_online_wandb = use_online_wandb
+        self.attempt = attempt
+        self.batch_size = batch_size
 
         # Initialize model
         # self.model = create_quality_model().to(device)
@@ -133,9 +169,11 @@ class QualityTrainer:
         ).to(device)
 
         # Initialize loss
-        self.loss = nn.MSELoss()
+        self.loss = BoundedMSELoss(penalty_weight=100.0).to(device)
+        # self.loss = nn.MSELoss()
         # self.loss = nn.SmoothL1Loss(beta=0.2)
         # self.loss = nn.L1Loss()
+        print(f"Loss: {self.loss}")
 
         # Setup parameter groups for different learning rates
         # attention_params = []
@@ -164,6 +202,12 @@ class QualityTrainer:
         # )
         # Invece di separare i parametri per attention, mettiamo tutti i parametri nello stesso gruppo
         params = list(self.model.parameters())
+        trainable_params = sum(
+            p.numel() for p in self.model.parameters() if p.requires_grad
+        )
+        total_params = sum(p.numel() for p in self.model.parameters())
+        print(f"Trainable Parameters: {trainable_params}")
+        print(f"Total Parameters: {total_params}")
 
         # Configure optimizer mantenendo la stessa struttura di prima
         self.optimizer = optim.AdamW(
@@ -176,20 +220,22 @@ class QualityTrainer:
             ],
             weight_decay=0.05,
         )
+        print(f"Optimizer: {self.optimizer}")
 
         # Setup learning rate scheduler
-        steps_per_epoch = 10 if try_run else len(train_loader)
+        steps_per_epoch = 30 if try_run else len(train_loader)
         self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer=self.optimizer,
-            max_lr=1e-4,  # picco a 1e-4
+            max_lr=learning_rate,  # usa il learning_rate passato al costruttore
             epochs=num_epochs,
             steps_per_epoch=steps_per_epoch,
             pct_start=0.20,  # 20% degli step per arrivare al picco
-            div_factor=10,  # LR iniziale = 1e-4/10 = 1e-5
-            final_div_factor=100,  # LR finale = 1e-4/100 = 1e-6
-            three_phase=False,  # usa two-phase
-            anneal_strategy="cos",  # transizione più smooth
+            div_factor=5,  # LR iniziale = learning_rate/5
+            final_div_factor=5,  # LR finale = LR iniziale
+            three_phase=False,  # usa two-phase policy
+            anneal_strategy="cos",  # transizione smooth
         )
+        print(f"Scheduler: {self.scheduler}")
 
         # Setup checkpointing
         self.checkpoint_dir = Path(checkpoint_dir) if checkpoint_dir else None
@@ -209,13 +255,15 @@ class QualityTrainer:
         """
         self.model.train()
         running_loss = 0.0
+        running_mse_loss = 0.0
+        running_bound_loss = 0.0
 
         # Determine number of batches to run
-        num_batches = 10 if self.try_run else len(self.train_loader)
+        num_batches = 30 if self.try_run else len(self.train_loader)
 
-        # Prepare iterator with the first 10 batches if try_run is enabled
+        # Prepare iterator with the first 30 batches if try_run is enabled
         train_iterator = (
-            islice(self.train_loader, 10) if self.try_run else self.train_loader
+            islice(self.train_loader, 30) if self.try_run else self.train_loader
         )
 
         for i, batch in enumerate(
@@ -235,7 +283,7 @@ class QualityTrainer:
             predictions = self.model(gt_features, mod_features).squeeze()
 
             # Calculate loss
-            loss = self.loss(predictions, scores)
+            loss, mse_loss, bound_loss = self.loss(predictions, scores)
 
             # Backward pass
             loss.backward()
@@ -252,8 +300,12 @@ class QualityTrainer:
 
             # Update metrics
             running_loss += loss.item()
+            running_mse_loss += mse_loss.item()
+            running_bound_loss += bound_loss.item()
 
         print(f"Train loss: {(running_loss / num_batches):.6f}")
+        print(f"Train MSE loss: {(running_mse_loss / num_batches):.6f}")
+        print(f"Train Boundary loss: {(running_bound_loss / num_batches):.6f}")
         # Calculate epoch metrics
         return {"train_loss": running_loss / num_batches}
 
@@ -266,14 +318,17 @@ class QualityTrainer:
             Dictionary of validation metrics
         """
         running_loss = 0.0
+        running_mse_loss = 0.0
+        running_bound_loss = 0.0
+
         all_preds = []
         all_targets = []
 
         # Determine number of batches to run
-        num_batches = 5 if self.try_run else len(self.val_loader)
+        num_batches = 6 if self.try_run else len(self.val_loader)
 
-        # Prepare iterator with the first 5 batches if try_run is enabled
-        val_iterator = islice(self.val_loader, 5) if self.try_run else self.val_loader
+        # Prepare iterator with the first 6 batches if try_run is enabled
+        val_iterator = islice(self.val_loader, 6) if self.try_run else self.val_loader
 
         # Set model to eval mode
         self.model.eval()
@@ -294,8 +349,10 @@ class QualityTrainer:
             predictions = self.model(gt_features, mod_features).squeeze()
 
             # Calculate loss
-            loss = self.loss(predictions, scores)
+            loss, mse_loss, bound_loss = self.loss(predictions, scores)
             running_loss += loss.item()
+            running_mse_loss += mse_loss.item()
+            running_bound_loss += bound_loss.item()
 
             # Store predictions for analysis
             all_preds.extend(predictions.cpu().numpy())
@@ -310,6 +367,8 @@ class QualityTrainer:
         )
 
         print(f"Val loss: {(running_loss / num_batches):.6f}")
+        print(f"Val MSE loss: {(running_mse_loss / num_batches):.6f}")
+        print(f"Val Boundary loss: {(running_bound_loss / num_batches):.6f}")
 
         # Calculate metrics
         metrics = {
@@ -373,6 +432,7 @@ class QualityTrainer:
         wandb.init(
             project="quality-assessment",
             mode="offline" if (self.try_run or not self.use_online_wandb) else "online",
+            name=f"attempt{self.attempt}",
             config={
                 "learning_rate": self.optimizer.param_groups[0]["lr"],
                 "batch_size": self.train_loader.batch_size,
@@ -380,6 +440,20 @@ class QualityTrainer:
                 "gradient_clipping": self.gradient_clip_value,
             },
         )
+
+        trainable_params = sum(
+            p.numel() for p in self.model.parameters() if p.requires_grad
+        )
+        total_params = sum(p.numel() for p in self.model.parameters())
+        print(f"Trainable Parameters: {trainable_params}")
+        print(f"Total Parameters: {total_params}")
+        wandb.log(
+            {"TrainableParameters": trainable_params, "TotalParameters": total_params}
+        )
+        wandb.log({"LossObject": self.loss})
+        # wandb.log({"OptimizerObject": self.optimizer})
+        # wandb.log({"SchedulerObject": self.scheduler})
+        wandb.log({"Batch Size": self.batch_size})
 
         best_val_loss = float("inf")
         patience_counter = 0
@@ -421,15 +495,17 @@ def main():
     Main training script.
     """
     # Configuration
-    DEVICE = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    GPU_ID = 1
+    DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
     BATCH_SIZE = 230
     NUM_EPOCHS = 50
     LEARNING_RATE = 1e-4
-    CHECKPOINT_DIR = "checkpoints/attempt12_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
-    TRY_RUN = False
-    USE_ONLINE_WANDB = False
+    ATTEMPT = 13
+    CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    TRY_RUN = True
+    USE_ONLINE_WANDB = True
 
     # Create dataloaders
     # from dataloader import create_feature_dataloaders
@@ -460,6 +536,8 @@ def main():
         yolo_weights_path="yolo11m.pt",
         try_run=TRY_RUN,
         use_online_wandb=USE_ONLINE_WANDB,
+        attempt=ATTEMPT,
+        batch_size=BATCH_SIZE,
     )
 
     trainer.train(num_epochs=NUM_EPOCHS)
