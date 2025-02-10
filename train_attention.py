@@ -499,12 +499,12 @@ def main():
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 230
+    BATCH_SIZE = 200
     NUM_EPOCHS = 50
-    LEARNING_RATE = 1e-4
-    ATTEMPT = 13
+    LEARNING_RATE = 1e-5
+    ATTEMPT = 14
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
-    TRY_RUN = True
+    TRY_RUN = False
     USE_ONLINE_WANDB = True
 
     # Create dataloaders
