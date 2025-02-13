@@ -78,8 +78,13 @@ class BinDistributionVisualizer:
         counts, _ = np.histogram(predictions, bins=self.bin_edges)
         max_count = max(counts)
 
+        # Calculate predictions in range
+        in_range = sum(1 for p in predictions if 0 <= p <= self.max_score)
+        total_preds = len(predictions)
+
         with open(output_file, "a") as f:
             f.write(f"Epoch: {epoch}/{total_epochs}")
+            f.write(f"\nInside Range: {in_range} / {total_preds} ({(in_range/total_preds)*100:.2f}%)")
             f.write("\nPrediction Distribution\n")
             f.write("-" * 80 + "\n")
 
@@ -158,6 +163,8 @@ class QualityTrainer:
         self.use_online_wandb = use_online_wandb
         self.attempt = attempt
         self.batch_size = batch_size
+        self.total_epochs = num_epochs
+        self.current_epoch = 0
 
         # Initialize model
         # self.model = create_quality_model().to(device)
@@ -169,10 +176,10 @@ class QualityTrainer:
         ).to(device)
 
         # Initialize loss
-        self.loss = BoundedMSELoss(penalty_weight=100.0).to(device)
+        # self.loss = BoundedMSELoss(penalty_weight=100.0).to(device)
         # self.loss = nn.MSELoss()
         # self.loss = nn.SmoothL1Loss(beta=0.2)
-        # self.loss = nn.L1Loss()
+        self.loss = nn.L1Loss()
         print(f"Loss: {self.loss}")
 
         # Setup parameter groups for different learning rates
@@ -231,7 +238,7 @@ class QualityTrainer:
             steps_per_epoch=steps_per_epoch,
             pct_start=0.20,  # 20% degli step per arrivare al picco
             div_factor=5,  # LR iniziale = learning_rate/5
-            final_div_factor=5,  # LR finale = LR iniziale
+            final_div_factor=3,  # LR finale = LR iniziale
             three_phase=False,  # usa two-phase policy
             anneal_strategy="cos",  # transizione smooth
         )
@@ -255,8 +262,7 @@ class QualityTrainer:
         """
         self.model.train()
         running_loss = 0.0
-        running_mse_loss = 0.0
-        running_bound_loss = 0.0
+        all_preds = []
 
         # Determine number of batches to run
         num_batches = 30 if self.try_run else len(self.train_loader)
@@ -282,8 +288,11 @@ class QualityTrainer:
             # Forward pass
             predictions = self.model(gt_features, mod_features).squeeze()
 
+            # Store predictions for analysis
+            all_preds.extend(predictions.detach().cpu().numpy())
+
             # Calculate loss
-            loss, mse_loss, bound_loss = self.loss(predictions, scores)
+            loss = self.loss(predictions, scores)
 
             # Backward pass
             loss.backward()
@@ -300,17 +309,25 @@ class QualityTrainer:
 
             # Update metrics
             running_loss += loss.item()
-            running_mse_loss += mse_loss.item()
-            running_bound_loss += bound_loss.item()
+
+        visualizer = BinDistributionVisualizer(n_bins=40, max_score=0.8)
+        visualizer.visualize(
+            predictions=all_preds,
+            epoch=self.current_epoch,
+            total_epochs=self.total_epochs,
+            output_file=f"{self.checkpoint_dir}/train_log.txt"
+        )
+
+        wandb.log({
+            "train_predictions_dist": wandb.Histogram(all_preds),
+        })
 
         print(f"Train loss: {(running_loss / num_batches):.6f}")
-        print(f"Train MSE loss: {(running_mse_loss / num_batches):.6f}")
-        print(f"Train Boundary loss: {(running_bound_loss / num_batches):.6f}")
         # Calculate epoch metrics
         return {"train_loss": running_loss / num_batches}
 
     @torch.no_grad()
-    def validate(self, current_epoch, total_epochs, val_log_file) -> Dict[str, float]:
+    def validate(self, current_epoch, val_log_file) -> Dict[str, float]:
         """
         Validate model.
 
@@ -318,8 +335,6 @@ class QualityTrainer:
             Dictionary of validation metrics
         """
         running_loss = 0.0
-        running_mse_loss = 0.0
-        running_bound_loss = 0.0
 
         all_preds = []
         all_targets = []
@@ -349,10 +364,8 @@ class QualityTrainer:
             predictions = self.model(gt_features, mod_features).squeeze()
 
             # Calculate loss
-            loss, mse_loss, bound_loss = self.loss(predictions, scores)
+            loss = self.loss(predictions, scores)
             running_loss += loss.item()
-            running_mse_loss += mse_loss.item()
-            running_bound_loss += bound_loss.item()
 
             # Store predictions for analysis
             all_preds.extend(predictions.cpu().numpy())
@@ -362,13 +375,11 @@ class QualityTrainer:
         visualizer.visualize(
             predictions=all_preds,
             epoch=current_epoch,
-            total_epochs=total_epochs,
+            total_epochs=self.total_epochs,
             output_file=val_log_file,
         )
 
         print(f"Val loss: {(running_loss / num_batches):.6f}")
-        print(f"Val MSE loss: {(running_mse_loss / num_batches):.6f}")
-        print(f"Val Boundary loss: {(running_bound_loss / num_batches):.6f}")
 
         # Calculate metrics
         metrics = {
@@ -459,6 +470,7 @@ class QualityTrainer:
         patience_counter = 0
 
         for epoch in range(num_epochs):
+            self.current_epoch = epoch + 1
             current_lr = self.optimizer.param_groups[0]["lr"]
             print(f"\nEpoch {epoch + 1}/{num_epochs},  Learning Rate: {current_lr:.9f}")
 
@@ -466,7 +478,6 @@ class QualityTrainer:
             train_metrics = self.train_epoch()
             val_metrics = self.validate(
                 current_epoch=epoch + 1,
-                total_epochs=+num_epochs,
                 val_log_file=f"{self.checkpoint_dir}/val_log.txt",
             )
 
@@ -495,14 +506,14 @@ def main():
     Main training script.
     """
     # Configuration
-    GPU_ID = 0
+    GPU_ID = 1
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 200
+    BATCH_SIZE = 220
     NUM_EPOCHS = 50
-    LEARNING_RATE = 1e-5
-    ATTEMPT = 15
+    LEARNING_RATE = 1e-4
+    ATTEMPT = 17
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     TRY_RUN = False
     USE_ONLINE_WANDB = True
