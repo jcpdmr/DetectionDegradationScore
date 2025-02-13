@@ -252,57 +252,100 @@ class SimpleBottleneckBlock(nn.Module):
         return F.relu(out + identity)
 
 
-class BaselineQualityModel(nn.Module):
-    def __init__(self, in_channels=512, dropout=0.2):
+class ResidualMLPBlock(nn.Module):
+    def __init__(self, hidden_dim, dropout=0.2):
         super().__init__()
+
+        self.mlp_expand = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim * 2),
+            nn.LayerNorm(hidden_dim * 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+
+        self.mlp_compress = nn.Sequential(
+            nn.Linear(hidden_dim * 2, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+        )
+
+        self.post_residual = nn.Sequential(nn.LayerNorm(hidden_dim), nn.ReLU())
+
+    def forward(self, x):
+        expanded = self.mlp_expand(x)
+        compressed = self.mlp_compress(expanded)
+        return self.post_residual(x + compressed)
+
+
+class BaselineQualityModel(nn.Module):
+    def __init__(self, in_channels=512, dropout=0.2, use_deep_residual=False):
+        super().__init__()
+
+        self.hidden_dim = in_channels // 2
+        self.use_deep_residual = use_deep_residual
 
         # Riduzione immediata dei canali
         self.reduce = nn.Conv2d(in_channels * 2, in_channels, 1)
 
-        # Solo due blocchi residuali
+        # Blocchi residuali
         self.process = nn.Sequential(
             SimpleBottleneckBlock(in_channels),
             SimpleBottleneckBlock(in_channels),
         )
 
-        # MLP più semplice
-        self.mlp = nn.Sequential(
-            nn.Linear(in_channels * 2, 64),
-            nn.BatchNorm1d(64),
+        # Dimensione ridotta iniziale
+        self.initial_reduction = nn.Sequential(
+            nn.Linear(in_channels * 2, self.hidden_dim),
+            nn.LayerNorm(self.hidden_dim),
+            nn.ReLU(),
+        )
+
+        # Blocchi MLP residuali
+        self.mlp_block1 = ResidualMLPBlock(self.hidden_dim, dropout)
+        self.mlp_block2 = ResidualMLPBlock(self.hidden_dim, dropout)
+
+        # Final prediction layers
+        self.final_layers = nn.Sequential(
+            nn.Linear(self.hidden_dim, self.hidden_dim // 4),
+            nn.LayerNorm(self.hidden_dim // 4),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(64, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(self.hidden_dim // 4, self.hidden_dim // 16),
+            nn.LayerNorm(self.hidden_dim // 16),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(256, 32),
-            nn.BatchNorm1d(32),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(32, 1),
+            nn.Linear(self.hidden_dim // 16, 1),
+            nn.Sigmoid(),
         )
 
     def forward(self, gt_features, mod_features):
-        # Concatenazione delle features
-        x = torch.cat([gt_features, mod_features], dim=1)  # [B, 1024, H, W]
+        # Concatenazione e processing iniziale
+        x = torch.cat([gt_features, mod_features], dim=1)
+        x = self.reduce(x)
+        x = self.process(x)
 
-        # Riduzione dei canali
-        x = self.reduce(x)  # [B, 512, H, W]
+        # Global pooling
+        avg_pool = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)
+        max_pool = F.adaptive_max_pool2d(x, 1).squeeze(-1).squeeze(-1)
+        x = torch.cat([avg_pool, max_pool], dim=1)
 
-        # Processing con i bottleneck blocks
-        x = self.process(x)  # [B, 512, H, W]
+        # Riduzione iniziale
+        A = self.initial_reduction(x)
 
-        # Global average pooling
-        avg_pool = F.adaptive_avg_pool2d(x, 1).squeeze(-1).squeeze(-1)  # [B, 512]
-        max_pool = F.adaptive_max_pool2d(x, 1).squeeze(-1).squeeze(-1)  # [B, C]
+        # Primo blocco MLP
+        D = self.mlp_block1(A)
 
-        # Concateno i due pooling
-        x = torch.cat([avg_pool, max_pool], dim=1)  # [B, C*2]
+        # Secondo blocco MLP
+        if self.use_deep_residual:
+            E = self.mlp_block2(D) + A  # Skip connection profonda
+        else:
+            E = self.mlp_block2(D)
 
-        # MLP finale
-        x = self.mlp(x)  # [B, 1]
+        # Predizione finale
+        out = self.final_layers(E)
 
-        return x
+        return out
 
 
 def create_baseline_quality_model() -> BaselineQualityModel:

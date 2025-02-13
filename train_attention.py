@@ -169,10 +169,10 @@ class QualityTrainer:
         ).to(device)
 
         # Initialize loss
-        self.loss = BoundedMSELoss(penalty_weight=100.0).to(device)
+        # self.loss = BoundedMSELoss(penalty_weight=100.0).to(device)
         # self.loss = nn.MSELoss()
         # self.loss = nn.SmoothL1Loss(beta=0.2)
-        # self.loss = nn.L1Loss()
+        self.loss = nn.L1Loss()
         print(f"Loss: {self.loss}")
 
         # Setup parameter groups for different learning rates
@@ -231,7 +231,7 @@ class QualityTrainer:
             steps_per_epoch=steps_per_epoch,
             pct_start=0.20,  # 20% degli step per arrivare al picco
             div_factor=5,  # LR iniziale = learning_rate/5
-            final_div_factor=5,  # LR finale = LR iniziale
+            final_div_factor=3,  # LR finale = LR iniziale
             three_phase=False,  # usa two-phase policy
             anneal_strategy="cos",  # transizione smooth
         )
@@ -255,8 +255,6 @@ class QualityTrainer:
         """
         self.model.train()
         running_loss = 0.0
-        running_mse_loss = 0.0
-        running_bound_loss = 0.0
 
         # Determine number of batches to run
         num_batches = 30 if self.try_run else len(self.train_loader)
@@ -283,7 +281,7 @@ class QualityTrainer:
             predictions = self.model(gt_features, mod_features).squeeze()
 
             # Calculate loss
-            loss, mse_loss, bound_loss = self.loss(predictions, scores)
+            loss = self.loss(predictions, scores)
 
             # Backward pass
             loss.backward()
@@ -300,12 +298,8 @@ class QualityTrainer:
 
             # Update metrics
             running_loss += loss.item()
-            running_mse_loss += mse_loss.item()
-            running_bound_loss += bound_loss.item()
 
         print(f"Train loss: {(running_loss / num_batches):.6f}")
-        print(f"Train MSE loss: {(running_mse_loss / num_batches):.6f}")
-        print(f"Train Boundary loss: {(running_bound_loss / num_batches):.6f}")
         # Calculate epoch metrics
         return {"train_loss": running_loss / num_batches}
 
@@ -318,8 +312,6 @@ class QualityTrainer:
             Dictionary of validation metrics
         """
         running_loss = 0.0
-        running_mse_loss = 0.0
-        running_bound_loss = 0.0
 
         all_preds = []
         all_targets = []
@@ -349,10 +341,8 @@ class QualityTrainer:
             predictions = self.model(gt_features, mod_features).squeeze()
 
             # Calculate loss
-            loss, mse_loss, bound_loss = self.loss(predictions, scores)
+            loss = self.loss(predictions, scores)
             running_loss += loss.item()
-            running_mse_loss += mse_loss.item()
-            running_bound_loss += bound_loss.item()
 
             # Store predictions for analysis
             all_preds.extend(predictions.cpu().numpy())
@@ -367,8 +357,6 @@ class QualityTrainer:
         )
 
         print(f"Val loss: {(running_loss / num_batches):.6f}")
-        print(f"Val MSE loss: {(running_mse_loss / num_batches):.6f}")
-        print(f"Val Boundary loss: {(running_bound_loss / num_batches):.6f}")
 
         # Calculate metrics
         metrics = {
@@ -495,14 +483,14 @@ def main():
     Main training script.
     """
     # Configuration
-    GPU_ID = 0
+    GPU_ID = 1
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 200
+    BATCH_SIZE = 220
     NUM_EPOCHS = 50
-    LEARNING_RATE = 1e-5
-    ATTEMPT = 15
+    LEARNING_RATE = 1e-4
+    ATTEMPT = 16
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     TRY_RUN = False
     USE_ONLINE_WANDB = True
