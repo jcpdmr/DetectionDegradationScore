@@ -37,7 +37,7 @@ class YOLO11mExtractor(nn.Module):
             return actual_hook_fn
 
         for layer_index in self.layer_indices:  # Iterate through specified indices
-            layer = self.model[layer_index]  # Access layer directly by index
+            layer = self.model.model[layer_index]  # Access layer directly by index
             layer.register_forward_hook(
                 hook_fn(layer_index)
             )  # Register hook with layer index

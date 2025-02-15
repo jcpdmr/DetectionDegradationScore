@@ -10,7 +10,11 @@ from typing import Dict, Optional, List
 import os
 from itertools import islice
 
-from quality_estimator import create_quality_model, create_baseline_quality_model
+from quality_estimator import (
+    create_quality_model,
+    create_baseline_quality_model,
+    create_multifeature_baseline_quality_model,
+)
 from extractor import load_feature_extractor, YOLO11mExtractor
 
 
@@ -84,7 +88,9 @@ class BinDistributionVisualizer:
 
         with open(output_file, "a") as f:
             f.write(f"Epoch: {epoch}/{total_epochs}")
-            f.write(f"\nInside Range: {in_range} / {total_preds} ({(in_range/total_preds)*100:.2f}%)")
+            f.write(
+                f"\nInside Range: {in_range} / {total_preds} ({(in_range / total_preds) * 100:.2f}%)"
+            )
             f.write("\nPrediction Distribution\n")
             f.write("-" * 80 + "\n")
 
@@ -98,37 +104,9 @@ class BinDistributionVisualizer:
             f.write("-" * 80 + "\n\n\n")
 
 
-# class WarmupScheduler:
-#     def __init__(self, optimizer, warmup_epochs, total_epochs, initial_lr):
-#         self.optimizer = optimizer
-#         self.warmup_epochs = warmup_epochs
-#         self.initial_lr = initial_lr
-#         self.current_epoch = 0
-#         self.total_epochs = total_epochs
-
-#     def step(self):
-#         self.current_epoch += 1
-#         if self.current_epoch <= self.warmup_epochs:
-#             lr_scale = self.current_epoch / self.warmup_epochs
-#             for param_group in self.optimizer.param_groups:
-#                 param_group["lr"] = self.initial_lr * lr_scale
-
-#     def state_dict(self):
-#         """Save the current state of the scheduler."""
-#         return {
-#             "current_epoch": self.current_epoch,
-#             "warmup_epochs": self.warmup_epochs,
-#             "total_epochs": self.total_epochs,
-#             "initial_lr": self.initial_lr,
-#         }
-
-
 class QualityTrainer:
     """
-    Trainer for the quality assessment model using MSE loss only.
-    Implements training techniques including:
-    - Monte Carlo dropout for validation
-    - Plateau detection and learning rate adaptation
+    Trainer for the quality assessment model.
     """
 
     def __init__(
@@ -166,13 +144,19 @@ class QualityTrainer:
         self.total_epochs = num_epochs
         self.current_epoch = 0
 
+        layer_indices = [4, 6, 9]
+        feature_channels = [512, 512, 512]
+
         # Initialize model
         # self.model = create_quality_model().to(device)
-        self.model = create_baseline_quality_model().to(device)
+        # self.model = create_baseline_quality_model().to(device)
+        self.model = create_multifeature_baseline_quality_model(
+            feature_channels=feature_channels, layer_indices=layer_indices
+        ).to(device)
 
         # Initialize feature extractor
         self.extractor: YOLO11mExtractor = load_feature_extractor(
-            weights_path=yolo_weights_path
+            weights_path=yolo_weights_path, layer_indices=layer_indices
         ).to(device)
 
         # Initialize loss
@@ -182,32 +166,6 @@ class QualityTrainer:
         self.loss = nn.L1Loss()
         print(f"Loss: {self.loss}")
 
-        # Setup parameter groups for different learning rates
-        # attention_params = []
-        # other_params = []
-        # for name, param in self.model.named_parameters():
-        #     if "cross_attention" in name:
-        #         attention_params.append(param)
-        #     else:
-        #         other_params.append(param)
-
-        # Configure optimizer
-        # self.optimizer = optim.AdamW(
-        #     [
-        #         {
-        #             "params": attention_params,
-        #             "lr": learning_rate * 0.1,
-        #             "initial_lr_scale": 0.1,
-        #         },
-        #         {
-        #             "params": other_params,
-        #             "lr": learning_rate,
-        #             "initial_lr_scale": 1.0,
-        #         },
-        #     ],
-        #     weight_decay=0.01,
-        # )
-        # Invece di separare i parametri per attention, mettiamo tutti i parametri nello stesso gruppo
         params = list(self.model.parameters())
         trainable_params = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
@@ -230,15 +188,15 @@ class QualityTrainer:
         print(f"Optimizer: {self.optimizer}")
 
         # Setup learning rate scheduler
-        steps_per_epoch = 30 if try_run else len(train_loader)
+        steps_per_epoch = 50 if try_run else len(train_loader)
         self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer=self.optimizer,
             max_lr=learning_rate,  # usa il learning_rate passato al costruttore
             epochs=num_epochs,
             steps_per_epoch=steps_per_epoch,
             pct_start=0.20,  # 20% degli step per arrivare al picco
-            div_factor=5,  # LR iniziale = learning_rate/5
-            final_div_factor=3,  # LR finale = LR iniziale
+            div_factor=2,  # Initial LR = max_lr / div_factor
+            final_div_factor=1.2,  # Final LR = initial LR / final_div_factor
             three_phase=False,  # usa two-phase policy
             anneal_strategy="cos",  # transizione smooth
         )
@@ -265,11 +223,11 @@ class QualityTrainer:
         all_preds = []
 
         # Determine number of batches to run
-        num_batches = 30 if self.try_run else len(self.train_loader)
+        num_batches = 50 if self.try_run else len(self.train_loader)
 
-        # Prepare iterator with the first 30 batches if try_run is enabled
+        # Prepare iterator with the first 50 batches if try_run is enabled
         train_iterator = (
-            islice(self.train_loader, 30) if self.try_run else self.train_loader
+            islice(self.train_loader, 50) if self.try_run else self.train_loader
         )
 
         for i, batch in enumerate(
@@ -315,12 +273,14 @@ class QualityTrainer:
             predictions=all_preds,
             epoch=self.current_epoch,
             total_epochs=self.total_epochs,
-            output_file=f"{self.checkpoint_dir}/train_log.txt"
+            output_file=f"{self.checkpoint_dir}/train_log.txt",
         )
 
-        wandb.log({
-            "train_predictions_dist": wandb.Histogram(all_preds),
-        })
+        wandb.log(
+            {
+                "train_predictions_dist": wandb.Histogram(all_preds),
+            }
+        )
 
         print(f"Train loss: {(running_loss / num_batches):.6f}")
         # Calculate epoch metrics
@@ -340,10 +300,10 @@ class QualityTrainer:
         all_targets = []
 
         # Determine number of batches to run
-        num_batches = 6 if self.try_run else len(self.val_loader)
+        num_batches = 15 if self.try_run else len(self.val_loader)
 
-        # Prepare iterator with the first 6 batches if try_run is enabled
-        val_iterator = islice(self.val_loader, 6) if self.try_run else self.val_loader
+        # Prepare iterator with the first 15 batches if try_run is enabled
+        val_iterator = islice(self.val_loader, 15) if self.try_run else self.val_loader
 
         # Set model to eval mode
         self.model.eval()
@@ -510,10 +470,10 @@ def main():
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
     FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 220
+    BATCH_SIZE = 180
     NUM_EPOCHS = 50
     LEARNING_RATE = 1e-4
-    ATTEMPT = 17
+    ATTEMPT = 18
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     TRY_RUN = False
     USE_ONLINE_WANDB = True
