@@ -3,27 +3,34 @@ import json
 from pathlib import Path
 from tqdm import tqdm
 from dataloader import create_feature_dataloaders, create_dataloaders
-from quality_estimator import create_quality_model
+from quality_estimator import (
+    create_quality_model,
+    create_baseline_quality_model,
+    create_multifeature_baseline_quality_model,
+)
 from extractor import load_feature_extractor, YOLO11mExtractor
+import torch.nn.functional as F
+from scipy.stats import spearmanr
+import numpy as np
+from scipy.stats import pearsonr
 
 
 def predict_test_set(
     model_path: str,
-    features_root: str,
-    error_scores_root: str,
     imgs_root: str,
+    error_scores_root: str,
     output_path: str,
     batch_size: int = 64,
     device: str = "cuda:0",
     yolo_weights_path: str = "yolo11m.pt",
 ):
     """
-    Make predictions on test set and save results to JSON.
+    Make predictions on test set, calculate metrics, and save results to JSON.
 
     Args:
         model_path: Path to saved model checkpoint
-        features_root: Root directory containing feature maps
         imgs_root: Root directory containing images
+        error_scores_root: Root directory containing error scores
         output_path: Path where to save JSON results
         batch_size: Batch size for inference
         device: Device to run inference on
@@ -31,15 +38,22 @@ def predict_test_set(
     # Set device
     device = torch.device(device if torch.cuda.is_available() else "cpu")
 
+    layer_indices = [9]
+    # feature_channels = [512, 512, 512, 512]
+
     # Load model
-    model = create_quality_model().to(device)
+    model = create_baseline_quality_model().to(device)
+    # model = create_multifeature_baseline_quality_model(
+    #     feature_channels=feature_channels, layer_indices=layer_indices
+    # ).to(device)
     checkpoint = torch.load(model_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
     # Initialize feature extractor
     extractor: YOLO11mExtractor = load_feature_extractor(
-        weights_path=yolo_weights_path
+        weights_path=yolo_weights_path,
+        layer_indices=layer_indices,
     ).to(device)
 
     # Create test dataloader
@@ -51,16 +65,17 @@ def predict_test_set(
 
     # Store results
     results = []
+    all_predictions = []
+    all_scores = []
 
     # Make predictions
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Making predictions"):
             gt = batch["gt"].to(device)
             compressed = batch["compressed"].to(device)
-            # gt_features = batch["gt_features"].to(device)
-            # mod_features = batch["compressed_features"].to(device)
             scores = batch["score"].to(device)
             names = batch["name"]
+
             gt_features, mod_features = extractor.extract_features(
                 img_gt=gt, img_mod=compressed
             )
@@ -77,38 +92,63 @@ def predict_test_set(
                     {
                         "filename": img_name,
                         "distance": float(pred.cpu()),  # Predicted distance
-                        "error_score": float(score),  # Ground truth error score
+                        "error_score": float(score.cpu()),  # Ground truth error score
                     }
                 )
+                all_predictions.append(pred.cpu().numpy())
+                all_scores.append(score.cpu().numpy())
+
+    # Convert lists to numpy arrays
+    all_predictions = np.array(all_predictions)
+    all_scores = np.array(all_scores)
+
+    # Calculate MAE
+    mae = F.l1_loss(torch.tensor(all_predictions), torch.tensor(all_scores)).item()
+
+    # Calculate Spearman's rank correlation
+    spearman_corr, spearman_p = spearmanr(all_predictions, all_scores)
+
+    # Calculate Pearson's correlation
+    pearson_corr, pearson_p = pearsonr(all_predictions, all_scores)
+
+    # Prepare statistics dictionary
+    statistics = {
+        "number_of_predictions": len(results),
+        "average_predicted_distance": np.mean(all_predictions).item(),
+        "MAE": mae,
+        "Spearman_correlation": spearman_corr.item(),
+        "Spearman_p_value": spearman_p.item(),
+        "Pearson_correlation": pearson_corr.item(),
+        "Pearson_p_value": pearson_p.item(),
+    }
 
     # Save results to JSON
+    output_data = {
+        "statistics": statistics,
+        "predictions": results,
+    }
+
     with open(output_path, "w") as f:
-        json.dump(results, f, indent=4)
+        json.dump(output_data, f, indent=4)
 
     print(f"Results saved to {output_path}")
 
-    # Calculate and print some statistics
-    predictions = [r["distance"] for r in results]
-    scores = [r["error_score"] for r in results]
-    correlation = torch.corrcoef(torch.tensor([predictions, scores]))[0, 1]
+    # Print statistics to console
     print("\nStatistics:")
-    print(f"Number of predictions: {len(results)}")
-    print(f"Average predicted distance: {sum(predictions) / len(predictions):.4f}")
-    print(f"Correlation with error scores: {correlation:.4f}")
+    for key, value in statistics.items():
+        print(f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}")
 
 
 def main():
     # Configuration
-    TRIAL = "attempt5_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    TRIAL = "attempt17_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     MODEL_PATH = f"checkpoints/{TRIAL}/best_model.pt"
-    FEATURES_ROOT = "feature_extracted"
-    IMGS_ROOT = "balanced_dataset"
+    IMGS_ROOT = "balanced_dataset"  # Utilizziamo IMGS_ROOT invece di FEATURES_ROOT
     ERROR_SCORES_ROOT = "balanced_dataset"
     OUTPUT_PATH = f"checkpoints/{TRIAL}/test_predictions.json"
 
     predict_test_set(
         model_path=MODEL_PATH,
-        features_root=FEATURES_ROOT,
         imgs_root=IMGS_ROOT,
         error_scores_root=ERROR_SCORES_ROOT,
         output_path=OUTPUT_PATH,

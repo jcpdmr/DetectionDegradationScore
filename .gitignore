@@ -10,6 +10,7 @@ feature_extracted/
 wandb/
 checkpoints/*/*
 !checkpoints/*/best_model.pt
+!checkpoints/*/test_predictions.json
 prediction_results
 videos/
 draw/
