@@ -144,8 +144,8 @@ class QualityTrainer:
         self.total_epochs = num_epochs
         self.current_epoch = 0
 
-        layer_indices = [4, 6, 9, 10]
-        feature_channels = [512, 512, 512, 512]
+        layer_indices = [9, 10]
+        feature_channels = [512, 512]
 
         # Initialize model
         # self.model = create_quality_model().to(device)
@@ -161,8 +161,8 @@ class QualityTrainer:
 
         # Initialize loss
         # self.loss = BoundedMSELoss(penalty_weight=100.0).to(device)
-        # self.loss = nn.MSELoss()
-        self.loss = nn.SmoothL1Loss(beta=0.2)
+        self.loss = nn.MSELoss()
+        # self.loss = nn.SmoothL1Loss(beta=0.2)
         # self.loss = nn.L1Loss()
         print(f"Loss: {self.loss}")
 
@@ -473,7 +473,7 @@ def main():
     BATCH_SIZE = 175
     NUM_EPOCHS = 50
     LEARNING_RATE = 2e-4
-    ATTEMPT = 22
+    ATTEMPT = 23
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     TRY_RUN = False
     USE_ONLINE_WANDB = True

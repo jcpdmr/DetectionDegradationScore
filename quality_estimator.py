@@ -254,10 +254,10 @@ class SimpleBottleneckBlock(nn.Module):
 
 
 class LightResidualMLPBlock(nn.Module):
-    def __init__(self, hidden_dim, dropout=0.2):
+    def __init__(self, hidden_dim, dropout=0.1):
         super().__init__()
 
-        expanded_dim = int(hidden_dim * 2)
+        expanded_dim = int(hidden_dim * 1.5)
 
         self.mlp = nn.Sequential(
             nn.Linear(hidden_dim, expanded_dim),
@@ -347,17 +347,21 @@ class MultiFeatureQualityModel(nn.Module):
 
         # Final channel reduction after concatenating layer features
         self.final_channel_reducer = nn.Sequential(
-            nn.Conv2d(sum(self._get_pooled_feature_dims(feature_channels)), 128, kernel_size=1),
-            nn.BatchNorm2d(128),
+            nn.Conv2d(
+                sum(self._get_pooled_feature_dims(feature_channels)) * 4,
+                256,
+                kernel_size=1,
+            ),  # Multiply by 4 to account for (2, 2) pooling
+            nn.BatchNorm2d(256),
             nn.ReLU(inplace=True),
         )
         # Modified MLP predictor to use LightResidualMLPBlock
         self.mlp_predictor = nn.Sequential(
-            LightResidualMLPBlock(hidden_dim=128),
-            LightResidualMLPBlock(hidden_dim=128),
-            # LightResidualMLPBlock(hidden_dim=128),
-            # LightResidualMLPBlock(hidden_dim=128),
-            nn.Linear(128, 1),  # Input dim matches hidden_dim of LightResidualMLPBlock
+            LightResidualMLPBlock(hidden_dim=256),
+            LightResidualMLPBlock(hidden_dim=256),
+            # LightResidualMLPBlock(hidden_dim=256),
+            # LightResidualMLPBlock(hidden_dim=256),
+            nn.Linear(256, 1),  # Input dim matches hidden_dim of LightResidualMLPBlock
             nn.Sigmoid(),
         )
 
@@ -365,10 +369,14 @@ class MultiFeatureQualityModel(nn.Module):
         """Creates a layer processor module."""
         return nn.Sequential(
             ChannelReductionBlock(
-                in_channels=feature_channels * 3, reduction_factor=24
-            ),  
-            SimpleBottleneckBlock(channels=feature_channels // 8),  # Process with bottleneck
-            SimpleBottleneckBlock(channels=feature_channels // 8),  # Process with bottleneck
+                in_channels=feature_channels * 3, reduction_factor=12
+            ),
+            SimpleBottleneckBlock(
+                channels=feature_channels // 4
+            ),  # Process with bottleneck
+            SimpleBottleneckBlock(
+                channels=feature_channels // 4
+            ),  # Process with bottleneck
         )
 
     def _get_pooled_feature_dims(self, layer_channels: List[int]) -> List[int]:
@@ -376,7 +384,7 @@ class MultiFeatureQualityModel(nn.Module):
         pooled_dims = []
         for i in range(len(layer_channels)):
             pooled_dim = (
-                layer_channels[i] // 8
+                layer_channels[i] // 4
             )  # Channels after bottleneck, as spatial dims become 1x1 with global pooling
             pooled_dims.append(pooled_dim)
         return pooled_dims
@@ -393,29 +401,29 @@ class MultiFeatureQualityModel(nn.Module):
             mod_feature = mod_features_dict[layer_idx]
 
             # 1. Concatenate GT and MOD features
-            features_diff = gt_feature - mod_feature # [B, C_i, H_i, W_i]
+            features_diff = gt_feature - mod_feature  # [B, C_i, H_i, W_i]
             concatenated_features = torch.cat(
                 [gt_feature, mod_feature, features_diff], dim=1
-            ) # [B, 3*C_i, H_i, W_i]
+            )  # [B, 3*C_i, H_i, W_i]
 
             # 2 & 3. Channel Reduction and Bottleneck Block
             processed_features = self.layer_processors[i](
                 concatenated_features
-            )  # [B, C_i/8, H_i, W_i]
+            )  # [B, C_i/4, H_i, W_i]
 
             # 4. Global Max Spatial Pooling (directly to 1x1)
             pooled_features = F.adaptive_max_pool2d(
-                processed_features, output_size=(1, 1)
-            )  # [B, C_i/8, 1, 1]
+                processed_features, output_size=(2, 2)
+            )  # [B, C_i/4, 2, 2]
 
             # 5. Flatten
-            flattened_features = torch.flatten(pooled_features, 1)  # [B, C_i/8]
+            flattened_features = torch.flatten(pooled_features, 1)  # [B, C_i/4 * 2 * 2]
             layer_feature_vectors.append(flattened_features)
 
         # Concatenate feature vectors from all layers
         combined_features_vector = torch.cat(
             layer_feature_vectors, dim=1
-        )  # [B, sum(C_i/8)]
+        )  # [B, sum(C_i/4 * 2 * 2)]
 
         # Optional final channel reduction with 1x1 conv
         reduced_features = (
@@ -424,7 +432,7 @@ class MultiFeatureQualityModel(nn.Module):
             )
             .squeeze(-1)
             .squeeze(-1)
-        )  # [B, 128]
+        )  # [B, 256]
 
         # MLP Predictor
         distance_prediction = self.mlp_predictor(reduced_features).squeeze(-1)  # [B]
