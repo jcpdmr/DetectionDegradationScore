@@ -17,9 +17,10 @@ def predict_test_set(
     imgs_root: str,
     error_scores_root: str,
     output_path: str,
+    backbone_name: Backbone,
     batch_size: int = 64,
     device: str = "cuda:0",
-    yolo_weights_path: str = "yolo11m.pt",
+    weights_path: str = "yolo11m.pt",
 ):
     """
     Make predictions on test set, calculate metrics, and save results to JSON.
@@ -29,34 +30,36 @@ def predict_test_set(
         imgs_root: Root directory containing images
         error_scores_root: Root directory containing error scores
         output_path: Path where to save JSON results
+        backbone_name: the Backbone to use
         batch_size: Batch size for inference
         device: Device to run inference on
+        weights_path: Path to YOLO11m weights file, needed only for YOLO backbone
     """
     # Set device
     device = torch.device(device if torch.cuda.is_available() else "cpu")
 
-    layer_indices = [9, 10]
-    feature_channels = [512, 512]
+    layer_indices = backbone_name.config.indices
+    feature_channels = backbone_name.config.channels
 
     # Load model
-    model = create_multifeature_baseline_quality_model(feature_channels=feature_channels, layer_indices=layer_indices).to(device)
-    # model = create_multifeature_baseline_quality_model(
-    #     feature_channels=feature_channels, layer_indices=layer_indices
-    # ).to(device)
+    model = create_multifeature_baseline_quality_model(
+        feature_channels=feature_channels,
+        layer_indices=layer_indices,
+    ).to(device)
+
     checkpoint = torch.load(model_path, map_location=device)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
     # Initialize feature extractor
     extractor: FeatureExtractor = load_feature_extractor(
-        backbone_name=Backbone.YOLO_V11_M,
-        weights_path=yolo_weights_path,
-        layer_indices=layer_indices,
+        backbone_name=backbone_name,
+        weights_path=weights_path,
     ).to(device)
 
     # Create test dataloader
     _, _, test_loader = create_dataloaders(
-        backbone_name=Backbone.YOLO_V11_M,
+        backbone_name=backbone_name,
         dataset_root=imgs_root,
         error_scores_root=error_scores_root,
         batch_size=batch_size,
@@ -145,6 +148,7 @@ def main():
     IMGS_ROOT = "balanced_dataset"
     ERROR_SCORES_ROOT = "balanced_dataset"
     OUTPUT_PATH = f"checkpoints/{TRIAL}/test_predictions.json"
+    BACKBONE = Backbone.YOLO_V11_M
 
     predict_test_set(
         model_path=MODEL_PATH,
@@ -152,7 +156,8 @@ def main():
         error_scores_root=ERROR_SCORES_ROOT,
         output_path=OUTPUT_PATH,
         batch_size=128,
-        yolo_weights_path="yolo11m.pt",
+        weights_path="yolo11m.pt",
+        backbone_name=BACKBONE,
     )
 
 

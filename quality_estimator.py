@@ -87,9 +87,7 @@ class ChannelReductionBlock(nn.Module):
 
 
 class MultiFeatureQualityModel(nn.Module):
-    def __init__(
-        self, feature_channels: List[int], layer_indices: List[int]
-    ):  # layer_channels = [C_layer4, C_layer6, C_layer9]
+    def __init__(self, feature_channels: List[int], layer_indices: List[int]):
         super().__init__()
         self.layer_indices = layer_indices  # Store layer indices for reference
         self.layer_processors = nn.ModuleList(
@@ -137,9 +135,7 @@ class MultiFeatureQualityModel(nn.Module):
         """Calculates the output dimension after pooling for each layer. Now it's just channels after bottleneck as we use global pooling."""
         pooled_dims = []
         for i in range(len(layer_channels)):
-            pooled_dim = (
-                layer_channels[i] // 4
-            )  # Channels after bottleneck, as spatial dims become 1x1 with global pooling
+            pooled_dim = layer_channels[i] // 4
             pooled_dims.append(pooled_dim)
         return pooled_dims
 

@@ -11,17 +11,16 @@ from backbones import Backbone
 class FeatureExtractor(ABC, nn.Module):
     """
     Abstract base class for feature extractors with common logic.
+    Simplified to use only layer indices.
     """
 
     def __init__(self):
         super().__init__()
         self.model: Optional[nn.Module] = None  # To be set by subclasses
-        self.layer_info: Optional[List[str] | List[int]] = (
-            None  # Layer names or indices, set by subclasses
+        self.layer_indices: List[int] = (
+            None  # Layer indices, set by subclasses, now always List[int]
         )
-        self.extracted_features: Dict[
-            str | int, torch.Tensor
-        ] = {}  # Keys can be str or int
+        self.extracted_features: Dict[int, torch.Tensor] = {}  # Keys are now always int
 
     @abstractmethod
     def _load_model(self):
@@ -32,67 +31,45 @@ class FeatureExtractor(ABC, nn.Module):
         pass
 
     @abstractmethod
-    def _get_layers_to_extract(self) -> List[str] | List[int]:
+    def _get_layers_to_extract(self) -> List[int]:
         """
-        Abstract method to define which layers to extract features from.
-        Subclasses must implement this. Return layer names or indices.
+        Abstract method to define which layer indices to extract features from.
+        Subclasses must implement this. Return layer indices.
         """
         pass
 
     def _register_hooks(self) -> None:
         """
-        Registers forward hooks on specified layers to capture their outputs.
-        Handles both layer names (str) and layer indices (int).
+        Registers forward hooks on specified layers (by index) to capture their outputs.
+        Simplified to handle only layer indices.
         """
 
-        def hook_fn(layer_key):  # layer_key can be name (str) or index (int)
+        def hook_fn(layer_index):  # layer_key is now always layer_index (int)
             def actual_hook_fn(module, input, output):
-                self.extracted_features[layer_key] = output
+                self.extracted_features[layer_index] = output
 
             return actual_hook_fn
 
-        if isinstance(
-            self.layer_info[0], str
-        ):  # Check if layer_info is a list of names (strings)
-            name_to_module = dict(
-                self.model.named_children()
-            )  # For named layers (like in VGG, ResNet, EfficientNet, MobileNet)
-            for layer_name in self.layer_info:
-                if layer_name not in name_to_module:
-                    available_names = list(name_to_module.keys())
-                    raise ValueError(
-                        f"Layer name '{layer_name}' not found in model. Available layer names are: {available_names}"
-                    )
-                layer = name_to_module[layer_name]
-                layer.register_forward_hook(hook_fn(layer_name))
+        if hasattr(
+            self.model, "model"
+        ):  # For YOLO-like models where layers are in model.model
+            model_layers = self.model.model
+        else:  # For sequential models or direct models
+            model_layers = self.model
 
-        elif isinstance(
-            self.layer_info[0], int
-        ):  # Check if layer_info is a list of indices (integers)
-            if hasattr(
-                self.model, "model"
-            ):  # For YOLO-like models where layers are in model.model
-                model_layers = self.model.model
-            else:  # For sequential models or direct models
-                model_layers = self.model
-
-            for layer_index in self.layer_info:
-                try:
-                    layer = model_layers[layer_index]  # Access layer by index
-                except IndexError:
-                    raise ValueError(
-                        f"Layer index {layer_index} out of range for model with {len(model_layers)} layers."
-                    )
-                layer.register_forward_hook(hook_fn(layer_index))
-        else:
-            raise TypeError(
-                "layer_info must be a list of layer names (str) or indices (int)."
-            )
+        for layer_index in self.layer_indices:
+            try:
+                layer = model_layers[layer_index]  # Access layer by index
+            except IndexError:
+                raise ValueError(
+                    f"Layer index {layer_index} out of range for model with {len(model_layers)} layers."
+                )
+            layer.register_forward_hook(hook_fn(layer_index))
 
     @torch.no_grad()
     def forward(
         self, x: torch.Tensor
-    ) -> Dict[str | int, torch.Tensor]:  # Return type allows str or int keys
+    ) -> Dict[int, torch.Tensor]:  # Return type is now always Dict[int, torch.Tensor]
         """
         Default forward method to extract features.
         """
@@ -103,8 +80,8 @@ class FeatureExtractor(ABC, nn.Module):
     def extract_features(
         self, img_gt: torch.Tensor, img_mod: torch.Tensor
     ) -> Tuple[
-        Dict[str | int, torch.Tensor], Dict[str | int, torch.Tensor]
-    ]:  # Return type allows str or int keys
+        Dict[int, torch.Tensor], Dict[int, torch.Tensor]
+    ]:  # Return type is now always Tuple[Dict[int, torch.Tensor], Dict[int, torch.Tensor]]
         """
         Default method to extract features for both GT and modified images.
         """
@@ -118,14 +95,11 @@ class YOLO11mExtractor(FeatureExtractor):
     Feature extractor for YOLO11m.
     """
 
-    def __init__(self, weights_path: str, layer_indices: List[int]):
+    def __init__(self, weights_path: str):  # layer_indices is still needed for YOLO
         self.weights_path = weights_path
-        self.layer_indices = layer_indices
-        super().__init__()  # Initialize FeatureExtractor base class
+        super().__init__()
         self._load_model()
-        self.layer_info = (
-            self._get_layers_to_extract()
-        )  # Set layer_info for _register_hooks
+        self.layer_indices = self._get_layers_to_extract()
         self._register_hooks()
 
     def _load_model(self):
@@ -136,7 +110,7 @@ class YOLO11mExtractor(FeatureExtractor):
 
     def _get_layers_to_extract(self) -> List[int]:
         """Returns layer indices to extract from."""
-        return self.layer_indices
+        return Backbone.YOLO_V11_M.config.indices
 
 
 class VGG16FeatureExtractor(FeatureExtractor):
@@ -144,13 +118,10 @@ class VGG16FeatureExtractor(FeatureExtractor):
     Feature extractor for VGG16.
     """
 
-    def __init__(self, layer_names: List[str]):
-        self.layer_names = layer_names
-        super().__init__()  # Initialize FeatureExtractor base class
+    def __init__(self):
+        super().__init__()
         self._load_model()
-        self.layer_info = (
-            self._get_layers_to_extract()
-        )  # Set layer_info for _register_hooks
+        self.layer_indices = self._get_layers_to_extract()
         self._register_hooks()
 
     def _load_model(self):
@@ -159,9 +130,9 @@ class VGG16FeatureExtractor(FeatureExtractor):
         self.model = vgg16
         self.model.eval()  # Set VGG16 model to eval mode
 
-    def _get_layers_to_extract(self) -> List[str]:
-        """Returns layer names to extract from."""
-        return self.layer_names
+    def _get_layers_to_extract(self) -> List[int]:
+        """Returns layer indices to extract from."""
+        return Backbone.VGG_16.config.indices
 
 
 class MobileNetV3LargeFeatureExtractor(FeatureExtractor):
@@ -169,13 +140,10 @@ class MobileNetV3LargeFeatureExtractor(FeatureExtractor):
     Feature extractor for MobileNetV3-Large.
     """
 
-    def __init__(self, layer_names: List[str]):
-        self.layer_names = layer_names
-        super().__init__()  # Initialize FeatureExtractor base class
+    def __init__(self):
+        super().__init__()
         self._load_model()
-        self.layer_info = (
-            self._get_layers_to_extract()
-        )  # Set layer_info for _register_hooks
+        self.layer_indices = self._get_layers_to_extract()
         self._register_hooks()
 
     def _load_model(self):
@@ -186,9 +154,9 @@ class MobileNetV3LargeFeatureExtractor(FeatureExtractor):
         self.model = mobilenet_v3_large
         self.model.eval()  # Set MobileNetV3-Large model to eval mode
 
-    def _get_layers_to_extract(self) -> List[str]:
-        """Returns layer names to extract from."""
-        return self.layer_names
+    def _get_layers_to_extract(self) -> List[int]:
+        """Returns layer indices to extract from."""
+        return Backbone.MOBILENET_V3_L.config.indices
 
 
 class EfficientNetV2MFeatureExtractor(FeatureExtractor):
@@ -196,13 +164,10 @@ class EfficientNetV2MFeatureExtractor(FeatureExtractor):
     Feature extractor for EfficientNetV2-Medium.
     """
 
-    def __init__(self, layer_names: List[str]):
-        self.layer_names = layer_names
-        super().__init__()  # Initialize FeatureExtractor base class
+    def __init__(self):
+        super().__init__()
         self._load_model()
-        self.layer_info = (
-            self._get_layers_to_extract()
-        )  # Set layer_info for _register_hooks
+        self.layer_indices = self._get_layers_to_extract()
         self._register_hooks()
 
     def _load_model(self):
@@ -213,29 +178,32 @@ class EfficientNetV2MFeatureExtractor(FeatureExtractor):
         self.model = efficientnet_v2_m
         self.model.eval()  # Set EfficientNetV2-Medium model to eval mode
 
-    def _get_layers_to_extract(self) -> List[str]:
-        """Returns layer names to extract from."""
-        return self.layer_names
+    def _get_layers_to_extract(self) -> List[int]:
+        """Returns layer indices to extract from."""
+        return Backbone.EFFICIENTNET_V2_M.config.indices
 
 
 def load_feature_extractor(
     backbone_name: Backbone,
     weights_path: str = None,
-    layer_names: List[str] = None,
-    layer_indices: List[int] = None,
+    # Removed layer_names and layer_indices parameters
 ) -> FeatureExtractor:
     """
     Factory function to load the feature extractor based on the backbone name.
+    Simplified to use Backbone Enum for configuration.
+
+    Args:
+        weights_path: used only for Yolo backbone
     """
 
     if backbone_name == Backbone.YOLO_V11_M:
-        return YOLO11mExtractor(weights_path=weights_path, layer_indices=layer_indices)
+        return YOLO11mExtractor(weights_path=weights_path)
     elif backbone_name == Backbone.VGG_16:
-        return VGG16FeatureExtractor(layer_names=layer_names)
+        return VGG16FeatureExtractor()
     elif backbone_name == Backbone.MOBILENET_V3_L:
-        return MobileNetV3LargeFeatureExtractor(layer_names=layer_names)
+        return MobileNetV3LargeFeatureExtractor()
     elif backbone_name == Backbone.EFFICIENTNET_V2_M:
-        return EfficientNetV2MFeatureExtractor(layer_names=layer_names)
+        return EfficientNetV2MFeatureExtractor()
     else:
         raise ValueError(
             f"Unsupported backbone: {backbone_name.value}. Supported backbones are: {[backbone.value for backbone in Backbone]}"
@@ -245,7 +213,7 @@ def load_feature_extractor(
 def test_feature_extractors():
     """
     Test function to understand feature dimensions and layer names for each backbone.
-    Creates dummy data and runs it through each feature extractor.
+    Simplified to use Backbone Enum configurations.
     """
     # Creiamo due set di dati dummy con dimensioni diverse
     batch_size = 16
@@ -254,42 +222,32 @@ def test_feature_extractors():
     )  # Dimensione standard per la maggior parte dei modelli
     dummy_320 = torch.randn(batch_size, 3, 320, 320)  # Dimensione per YOLO
 
-    # Configurazione per ogni backbone
+    # Configurazione per ogni backbone, simplified
     configs = {
         Backbone.YOLO_V11_M: {
-            "layer_info": [9, 10],
             "input_data": dummy_320,
             "weights_path": "yolo11m.pt",  # Necessario per YOLO
         },
         Backbone.VGG_16: {
-            "layer_info": ["16", "23"],
             "input_data": dummy_224,
         },
         Backbone.MOBILENET_V3_L: {
-            "layer_info": ["5", "12"],
             "input_data": dummy_224,
         },
         Backbone.EFFICIENTNET_V2_M: {
-            "layer_info": ["2", "5", "6"],
             "input_data": dummy_224,
         },
     }
 
     for backbone in Backbone:
-        print(f"\n=== Testing {backbone.value} ===")
+        print(f"\n=== Testing {backbone.value} Extractor ===")
 
         config = configs[backbone]
         try:
-            # Initialize extractor
+            # Initialize extractor, simplified call
             extractor = load_feature_extractor(
                 backbone_name=backbone,
                 weights_path=config.get("weights_path"),
-                layer_names=config["layer_info"]
-                if isinstance(config["layer_info"][0], str)
-                else None,
-                layer_indices=config["layer_info"]
-                if isinstance(config["layer_info"][0], int)
-                else None,
             )
 
             # Extract features

@@ -112,39 +112,18 @@ class QualityTrainer:
         self.backbone_name = backbone_name
 
         # Initialize feature extractor
-
-        layer_indices_yolo = [9, 10]
-        feature_channels_yolo = [512, 512]
-
-        layer_names_vgg = ["16", "23"]
-        feature_channels_vgg = [256, 512]
-
-        layer_names_mobilenetv3_large = ["5", "12"]
-        feature_channels_mobilenetv3_large = [96, 160]
-
-        layer_names_efficientnetv2_m = ["2", "5", "6"]
-        feature_channels_efficientnetv2_m = [64, 128, 288]
-
-        if self.backbone_name == Backbone.YOLO_V11_M:
-            layer_indices = layer_indices_yolo  # Use layer indices for YOLO
-            feature_channels = feature_channels_yolo  # Use channels for YOLO
-            layer_names = None  # Ensure layer_names is None for index-based extractors
-
-        elif self.backbone_name == Backbone.EFFICIENTNET_V2_M:
-            layer_names = (
-                layer_names_efficientnetv2_m  # Use layer names for EfficientNetV2-m
-            )
-            feature_channels = (
-                feature_channels_efficientnetv2_m  # Use channels for EfficientNetV2-m
-            )
-            layer_indices = None  # Set layer_indices to None when using names
+        layer_config = self.backbone_name.config
+        layer_indices = layer_config.indices
+        feature_channels = layer_config.channels
+        # For YOLO, weights_path is needed, for others, it's None
+        weights_path_extractor = (
+            yolo_weights_path if self.backbone_name == Backbone.YOLO_V11_M else None
+        )
 
         # Initialize feature extractor
         self.extractor: FeatureExtractor = load_feature_extractor(
             backbone_name=self.backbone_name,
-            weights_path=yolo_weights_path,
-            layer_names=layer_names,
-            layer_indices=layer_indices,  # Pass backbone_name and layer info to extractor loader
+            weights_path=weights_path_extractor,
         ).to(device)
 
         # Initialize model
@@ -198,10 +177,6 @@ class QualityTrainer:
         if self.checkpoint_dir:
             self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-        # Training configuration
-        self.gradient_clip_value = 1.0
-        self.mc_dropout_samples = 5
-
     def train_epoch(self) -> Dict[str, float]:
         """
         Train for one epoch.
@@ -227,8 +202,6 @@ class QualityTrainer:
             # Process batch
             gt = batch["gt"].to(self.device)
             compressed = batch["compressed"].to(self.device)
-            # gt_features = batch["gt_features"].to(self.device)
-            # mod_features = batch["compressed_features"].to(self.device)
             scores = batch["score"].to(self.device)
             gt_features, mod_features = self.extractor.extract_features(
                 img_gt=gt, img_mod=compressed
@@ -394,7 +367,6 @@ class QualityTrainer:
                 "learning_rate": self.optimizer.param_groups[0]["lr"],
                 "batch_size": self.train_loader.batch_size,
                 "model_type": self.model.__class__.__name__,
-                "gradient_clipping": self.gradient_clip_value,
             },
         )
 
@@ -408,8 +380,6 @@ class QualityTrainer:
             {"TrainableParameters": trainable_params, "TotalParameters": total_params}
         )
         wandb.log({"LossObject": self.loss})
-        # wandb.log({"OptimizerObject": self.optimizer})
-        # wandb.log({"SchedulerObject": self.scheduler})
         wandb.log({"Batch Size": self.batch_size})
 
         best_val_loss = float("inf")
@@ -455,14 +425,14 @@ def main():
     GPU_ID = 0
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
     ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 220
+    BATCH_SIZE = 180
     NUM_EPOCHS = 50
     LEARNING_RATE = 1e-3
-    ATTEMPT = 24
+    ATTEMPT = 25
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
-    TRY_RUN = True
+    TRY_RUN = False
     USE_ONLINE_WANDB = True
-    BACKBONE = Backbone.YOLO_V11_M
+    BACKBONE = Backbone.VGG_16
 
     from dataloader import create_dataloaders
 
