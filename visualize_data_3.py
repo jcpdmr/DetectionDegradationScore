@@ -58,11 +58,11 @@ def create_calibration_curve(json_file: str, n_bins: int = 40) -> str:
             mode="markers+lines",
             name="Calibration Curve",
             marker=dict(size=10),
-            error_y=dict(
-                type="data",
-                array=bin_std_devs,
-                visible=True,
-            ),
+            # error_y=dict(
+            #     type="data",
+            #     array=bin_std_devs,
+            #     visible=True,
+            # ),
         )
     )
 
@@ -90,13 +90,13 @@ def create_calibration_curve(json_file: str, n_bins: int = 40) -> str:
     output_file_html = "calibration_curve_with_error_bars.html"
     plot(fig, filename=output_file_html, auto_open=False)
 
-    output_file_png = "calibration_curve_with_error_bars.png"
+    output_file_png = "calibration_curve.png"
     pio.write_image(fig, output_file_png)
 
     return output_file_html
 
 
 if __name__ == "__main__":
-    json_file_path = "checkpoints/attempt22_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444/test_predictions.json"
+    json_file_path = "checkpoints/attempt24_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444/test_predictions.json"
     html_file_path = create_calibration_curve(json_file_path)
     print(f"Calibration curve saved to {html_file_path}")

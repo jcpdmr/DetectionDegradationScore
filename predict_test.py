@@ -2,17 +2,14 @@ import torch
 import json
 from pathlib import Path
 from tqdm import tqdm
-from dataloader import create_feature_dataloaders, create_dataloaders
-from quality_estimator import (
-    create_quality_model,
-    create_baseline_quality_model,
-    create_multifeature_baseline_quality_model,
-)
-from extractor import load_feature_extractor, YOLO11mExtractor
+from dataloader import create_dataloaders
+from quality_estimator import create_multifeature_baseline_quality_model
+from extractor import load_feature_extractor, FeatureExtractor
 import torch.nn.functional as F
 from scipy.stats import spearmanr
 import numpy as np
 from scipy.stats import pearsonr
+from backbones import Backbone
 
 
 def predict_test_set(
@@ -38,11 +35,11 @@ def predict_test_set(
     # Set device
     device = torch.device(device if torch.cuda.is_available() else "cpu")
 
-    layer_indices = [9]
-    # feature_channels = [512, 512, 512, 512]
+    layer_indices = [9, 10]
+    feature_channels = [512, 512]
 
     # Load model
-    model = create_baseline_quality_model().to(device)
+    model = create_multifeature_baseline_quality_model(feature_channels=feature_channels, layer_indices=layer_indices).to(device)
     # model = create_multifeature_baseline_quality_model(
     #     feature_channels=feature_channels, layer_indices=layer_indices
     # ).to(device)
@@ -51,13 +48,15 @@ def predict_test_set(
     model.eval()
 
     # Initialize feature extractor
-    extractor: YOLO11mExtractor = load_feature_extractor(
+    extractor: FeatureExtractor = load_feature_extractor(
+        backbone_name=Backbone.YOLO_V11_M,
         weights_path=yolo_weights_path,
         layer_indices=layer_indices,
     ).to(device)
 
     # Create test dataloader
     _, _, test_loader = create_dataloaders(
+        backbone_name=Backbone.YOLO_V11_M,
         dataset_root=imgs_root,
         error_scores_root=error_scores_root,
         batch_size=batch_size,
@@ -141,9 +140,9 @@ def predict_test_set(
 
 def main():
     # Configuration
-    TRIAL = "attempt17_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    TRIAL = "attempt24_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     MODEL_PATH = f"checkpoints/{TRIAL}/best_model.pt"
-    IMGS_ROOT = "balanced_dataset"  # Utilizziamo IMGS_ROOT invece di FEATURES_ROOT
+    IMGS_ROOT = "balanced_dataset"
     ERROR_SCORES_ROOT = "balanced_dataset"
     OUTPUT_PATH = f"checkpoints/{TRIAL}/test_predictions.json"
 

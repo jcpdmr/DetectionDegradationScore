@@ -10,45 +10,9 @@ from typing import Dict, Optional, List
 import os
 from itertools import islice
 
-from quality_estimator import (
-    create_quality_model,
-    create_baseline_quality_model,
-    create_multifeature_baseline_quality_model,
-)
-from extractor import load_feature_extractor, YOLO11mExtractor
-
-
-class BoundedMSELoss(nn.Module):
-    def __init__(self, penalty_weight=10.0):
-        super().__init__()
-        self.mse = nn.MSELoss()
-        self.penalty_weight = penalty_weight
-
-    def forward(self, pred, target):
-        # MSE di base
-        mse_loss = self.mse(pred, target)
-
-        # Penalità quadratica per valori fuori range
-        below_mask = pred < 0
-        above_mask = pred > 0.8
-
-        below_penalty = (
-            torch.mean(pred[below_mask] ** 2)
-            if below_mask.any()
-            else torch.tensor(0.0).to(pred.device)
-        )
-        above_penalty = (
-            torch.mean((pred[above_mask] - 0.8) ** 2)
-            if above_mask.any()
-            else torch.tensor(0.0).to(pred.device)
-        )
-
-        boundary_loss = below_penalty + above_penalty
-
-        # Combina le loss
-        total_loss = mse_loss + self.penalty_weight * boundary_loss
-
-        return total_loss, mse_loss, boundary_loss
+from quality_estimator import create_multifeature_baseline_quality_model
+from extractor import load_feature_extractor, FeatureExtractor
+from backbones import Backbone
 
 
 class BinDistributionVisualizer:
@@ -114,6 +78,7 @@ class QualityTrainer:
         train_loader: DataLoader,
         val_loader: DataLoader,
         device: torch.device,
+        backbone_name: Backbone,
         learning_rate: float = 1e-4,
         checkpoint_dir: Optional[str] = None,
         num_epochs: int = 100,
@@ -133,6 +98,7 @@ class QualityTrainer:
             learning_rate: Initial learning rate
             checkpoint_dir: Directory to save checkpoints
             try_run: Whether to run a quick test
+            backbone_name: Name of the backbone model [yolov11m, efficientnet-v2, mobilenet-v3, ...]
         """
         self.device = device
         self.train_loader = train_loader
@@ -143,24 +109,50 @@ class QualityTrainer:
         self.batch_size = batch_size
         self.total_epochs = num_epochs
         self.current_epoch = 0
+        self.backbone_name = backbone_name
 
-        layer_indices = [9, 10]
-        feature_channels = [512, 512]
+        # Initialize feature extractor
+
+        layer_indices_yolo = [9, 10]
+        feature_channels_yolo = [512, 512]
+
+        layer_names_vgg = ["16", "23"]
+        feature_channels_vgg = [256, 512]
+
+        layer_names_mobilenetv3_large = ["5", "12"]
+        feature_channels_mobilenetv3_large = [96, 160]
+
+        layer_names_efficientnetv2_m = ["2", "5", "6"]
+        feature_channels_efficientnetv2_m = [64, 128, 288]
+
+        if self.backbone_name == Backbone.YOLO_V11_M:
+            layer_indices = layer_indices_yolo  # Use layer indices for YOLO
+            feature_channels = feature_channels_yolo  # Use channels for YOLO
+            layer_names = None  # Ensure layer_names is None for index-based extractors
+
+        elif self.backbone_name == Backbone.EFFICIENTNET_V2_M:
+            layer_names = (
+                layer_names_efficientnetv2_m  # Use layer names for EfficientNetV2-m
+            )
+            feature_channels = (
+                feature_channels_efficientnetv2_m  # Use channels for EfficientNetV2-m
+            )
+            layer_indices = None  # Set layer_indices to None when using names
+
+        # Initialize feature extractor
+        self.extractor: FeatureExtractor = load_feature_extractor(
+            backbone_name=self.backbone_name,
+            weights_path=yolo_weights_path,
+            layer_names=layer_names,
+            layer_indices=layer_indices,  # Pass backbone_name and layer info to extractor loader
+        ).to(device)
 
         # Initialize model
-        # self.model = create_quality_model().to(device)
-        # self.model = create_baseline_quality_model().to(device)
         self.model = create_multifeature_baseline_quality_model(
             feature_channels=feature_channels, layer_indices=layer_indices
         ).to(device)
 
-        # Initialize feature extractor
-        self.extractor: YOLO11mExtractor = load_feature_extractor(
-            weights_path=yolo_weights_path, layer_indices=layer_indices
-        ).to(device)
-
         # Initialize loss
-        # self.loss = BoundedMSELoss(penalty_weight=100.0).to(device)
         self.loss = nn.MSELoss()
         # self.loss = nn.SmoothL1Loss(beta=0.2)
         # self.loss = nn.L1Loss()
@@ -180,7 +172,6 @@ class QualityTrainer:
                 {
                     "params": params,
                     "lr": learning_rate,
-                    "initial_lr_scale": 1.0,  # Manteniamo initial_lr_scale per compatibilità
                 }
             ],
             weight_decay=0.01,
@@ -254,11 +245,6 @@ class QualityTrainer:
 
             # Backward pass
             loss.backward()
-
-            # # Gradient clipping
-            # torch.nn.utils.clip_grad_norm_(
-            #     self.model.parameters(), max_norm=self.gradient_clip_value
-            # )
 
             # Update weights
             self.optimizer.step()
@@ -466,26 +452,17 @@ def main():
     Main training script.
     """
     # Configuration
-    GPU_ID = 1
+    GPU_ID = 0
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
-    FEATURES_ROOT = "feature_extracted"
     ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 175
+    BATCH_SIZE = 220
     NUM_EPOCHS = 50
-    LEARNING_RATE = 2e-4
-    ATTEMPT = 23
+    LEARNING_RATE = 1e-3
+    ATTEMPT = 24
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
-    TRY_RUN = False
+    TRY_RUN = True
     USE_ONLINE_WANDB = True
-
-    # Create dataloaders
-    # from dataloader import create_feature_dataloaders
-
-    # train_loader, val_loader, _ = create_feature_dataloaders(
-    #     features_root=FEATURES_ROOT,
-    #     error_scores_root=ERROR_SCORES_ROOT,
-    #     batch_size=BATCH_SIZE,
-    # )
+    BACKBONE = Backbone.YOLO_V11_M
 
     from dataloader import create_dataloaders
 
@@ -494,6 +471,7 @@ def main():
         error_scores_root=ERROR_SCORES_ROOT,
         batch_size=BATCH_SIZE,
         num_workers=os.cpu_count(),
+        backbone_name=BACKBONE,
     )
 
     # Initialize and run trainer
@@ -509,6 +487,7 @@ def main():
         use_online_wandb=USE_ONLINE_WANDB,
         attempt=ATTEMPT,
         batch_size=BATCH_SIZE,
+        backbone_name=BACKBONE,
     )
 
     trainer.train(num_epochs=NUM_EPOCHS)
