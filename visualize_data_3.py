@@ -5,7 +5,9 @@ from plotly.offline import plot
 import plotly.io as pio
 
 
-def create_calibration_curve(json_file: str, n_bins: int = 40) -> str:
+def create_calibration_curve(
+    path: str, json_file: str, with_errors: bool = False, n_bins: int = 40
+) -> str:
     """
     Creates a calibration curve from JSON data and saves it as an HTML file.
 
@@ -17,7 +19,7 @@ def create_calibration_curve(json_file: str, n_bins: int = 40) -> str:
         Path to the generated HTML file.
     """
     # Load data from JSON
-    with open(json_file, "r") as f:
+    with open(f"{path}/{json_file}", "r") as f:
         data = json.load(f)
 
     predictions = [item["distance"] for item in data["predictions"]]
@@ -57,12 +59,14 @@ def create_calibration_curve(json_file: str, n_bins: int = 40) -> str:
             y=bin_fractions,
             mode="markers+lines",
             name="Calibration Curve",
-            marker=dict(size=10),
-            # error_y=dict(
-            #     type="data",
-            #     array=bin_std_devs,
-            #     visible=True,
-            # ),
+            marker=dict(size=4),
+            error_y=dict(
+                type="data",
+                array=bin_std_devs,
+                visible=True,
+            )
+            if with_errors
+            else dict(),
         )
     )
 
@@ -87,16 +91,23 @@ def create_calibration_curve(json_file: str, n_bins: int = 40) -> str:
     )
 
     # Save to HTML and PNG
-    output_file_html = "calibration_curve_with_error_bars.html"
+    output_file_html = (
+        f"{path}/calibration_curve{'_with_error_bars' if with_errors else ''}.html"
+    )
     plot(fig, filename=output_file_html, auto_open=False)
 
-    output_file_png = "calibration_curve.png"
-    pio.write_image(fig, output_file_png)
-
-    return output_file_html
+    output_file_png = (
+        f"{path}/calibration_curve{'_with_error_bars' if with_errors else ''}.png"
+    )
+    pio.write_image(fig, output_file_png, scale=8)
 
 
 if __name__ == "__main__":
-    json_file_path = "checkpoints/attempt24_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444/test_predictions.json"
-    html_file_path = create_calibration_curve(json_file_path)
-    print(f"Calibration curve saved to {html_file_path}")
+    ATTEMPT = 26
+    CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    JSON_FILE = "test_predictions.json"
+    WITH_ERRORS = False
+    html_file_path = create_calibration_curve(
+        path=CHECKPOINT_DIR, json_file=JSON_FILE, with_errors=WITH_ERRORS
+    )
+    print(f"Calibration curve saved, use error bars: {WITH_ERRORS}")

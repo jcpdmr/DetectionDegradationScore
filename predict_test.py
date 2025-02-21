@@ -143,12 +143,12 @@ def predict_test_set(
 
 def main():
     # Configuration
-    TRIAL = "attempt24_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    TRIAL = "attempt26_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
     MODEL_PATH = f"checkpoints/{TRIAL}/best_model.pt"
     IMGS_ROOT = "balanced_dataset"
     ERROR_SCORES_ROOT = "balanced_dataset"
     OUTPUT_PATH = f"checkpoints/{TRIAL}/test_predictions.json"
-    BACKBONE = Backbone.YOLO_V11_M
+    BACKBONE = Backbone.EFFICIENTNET_V2_M
 
     predict_test_set(
         model_path=MODEL_PATH,
