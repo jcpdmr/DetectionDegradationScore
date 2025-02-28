@@ -7,23 +7,28 @@ from tqdm import tqdm
 from typing import List
 
 
-def clean_and_create_directory_structure(base_path, quality_values: List[int]):
+def clean_and_create_directory_structure(
+    base_path, quality_values: List[int], splits: List[str]
+):
     """
-    Creates or cleans the directory structure for GT and MOD images.
+    Creates or cleans the directory structure for GT and compressed images.
 
     Args:
-        quality_values: List of quality values to create directories for [10, 20, 30, 40, 50]
+        base_path: Base directory of the dataset
+        quality_values: List of quality values to create directories for
+        splits: List of dataset splits to process
     """
     base_path = Path(base_path)
 
-    # Create compressed directories for each quality value
-    for quality in quality_values:
-        compressed_dir = base_path / "train" / f"compressed{quality}"
-        if os.path.exists(compressed_dir):
-            print(f"Cleaning directory: {compressed_dir}")
-            shutil.rmtree(compressed_dir)
-        os.makedirs(compressed_dir)
-        print(f"Creating directory: {compressed_dir}")
+    # Create compressed directories for each quality value and split
+    for split in splits:
+        for quality in quality_values:
+            compressed_dir = base_path / split / f"compressed{quality}"
+            if os.path.exists(compressed_dir):
+                print(f"Cleaning directory: {compressed_dir}")
+                shutil.rmtree(compressed_dir)
+            os.makedirs(compressed_dir)
+            print(f"Creating directory: {compressed_dir}")
 
 
 def apply_compression_artifacts(img_path, output_path, quality):
@@ -38,7 +43,6 @@ def apply_compression_artifacts(img_path, output_path, quality):
             "JPEG",
             quality=quality,
             optimize=True,
-            smooth=2,
             subsampling="4:4:4",
         )
 
@@ -111,13 +115,15 @@ def process_split(split_name, base_path, quality_values: List[int]):
 
 
 def main():
-    BASE_PATH = "/andromeda/personal/jdamerini/unbalanced_dataset"
-    splits = ["train"]  # Modified to process only "train" set
-    quality_values = [20, 24, 28, 32, 36, 40, 50]
+    BASE_PATH = (
+        "/andromeda/personal/jdamerini/unbalanced_dataset_coco2017"  # Updated path
+    )
+    splits = ["train", "val", "test"]  # Now processing all splits
+    quality_values = [20, 25, 30, 35, 40, 45, 50]  # You can adjust these quality values
 
     # Create directory structure
     clean_and_create_directory_structure(
-        base_path=BASE_PATH, quality_values=quality_values
+        base_path=BASE_PATH, quality_values=quality_values, splits=splits
     )
 
     for split in splits:

@@ -7,6 +7,7 @@ import sys
 import os
 from ultralytics import YOLO
 from datetime import datetime
+from itertools import islice
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dataloader import create_multi_compression_dataloaders
@@ -78,6 +79,8 @@ class MultiCompressionErrorScoreCalculator:
         self,
         dataloader: torch.utils.data.DataLoader,
         output_dir: Path,
+        split_name: str,
+        try_run: bool,
     ) -> Dict[str, Dict[int, float]]:
         """
         Process a dataset split and calculate error scores for all compression levels
@@ -85,14 +88,22 @@ class MultiCompressionErrorScoreCalculator:
         Args:
             dataloader: DataLoader containing image sets
             output_dir: Directory to save error scores
+            split_name: Name of the split being processed
+            try_run: Flag to process a subset of the dataset for testing
 
         Returns:
             Nested dictionary mapping image names to their error scores for each quality
         """
+
+        num_batches = 3 if try_run else len(dataloader)
+        batch_iterator = islice(dataloader, 3) if try_run else dataloader
+
         scores_dict = {}
 
         # Process all batches
-        for batch in tqdm(dataloader, desc="Processing split"):
+        for batch in tqdm(
+            batch_iterator, total=num_batches, desc=f"Processing {split_name} split"
+        ):
             gt_images = batch["gt"].to(self.device)
             compressed_batch = {
                 q: batch["compressed"][q].to(self.device) for q in self.quality_values
@@ -103,17 +114,17 @@ class MultiCompressionErrorScoreCalculator:
             batch_scores = self.process_batch(gt_images, compressed_batch)
 
             # Store scores
-            for name in names:
+            for i, name in enumerate(names):
                 scores_dict[name] = {
-                    quality: float(batch_scores[quality][names.index(name)])
+                    quality: float(batch_scores[quality][i])
                     for quality in self.quality_values
                 }
 
         # Create output directory if it doesn't exist
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Save scores
-        scores_file = output_dir / "error_scores.json"
+        # Save scores with split name in filename
+        scores_file = output_dir / f"error_scores_{split_name}.json"
         with open(scores_file, "w") as f:
             json.dump(scores_dict, f, indent=4)
 
@@ -136,12 +147,15 @@ def main():
     Main function to calculate error scores for multiple compression levels
     """
     # Configuration
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
-    DATA_ROOT = "/andromeda/personal/jdamerini/unbalanced_dataset"
-    OUTPUT_ROOT = "error_scores_analysis/mapping"
+    GPU_ID = 0
+    device = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
+    DATA_ROOT = "/path/to/unbalanced_dataset_coco2017"  # Updated path
+    ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
+    OUTPUT_ROOT = f"error_scores_analysis/mapping/{ATTEMPT}"
     BATCH_SIZE = 128
     MODEL_PATH = "../yolo11m.pt"
-    QUALITY_VALUES = [20, 24, 28, 32, 36, 40, 50]
+    QUALITY_VALUES = [20, 25, 30, 35, 40, 45, 50]  # Adjusted quality values
+    TRY_RUN = True  # Set to False to process the entire dataset
 
     # Create timestamped directory
     timestamp = get_timestamp_dir()
@@ -159,20 +173,19 @@ def main():
     )
 
     # Create dataloaders
-    train_loader = create_multi_compression_dataloaders(
+    dataloaders = create_multi_compression_dataloaders(
         dataset_root=DATA_ROOT, batch_size=BATCH_SIZE, quality_values=QUALITY_VALUES
     )
 
     # Process each split
-    for split, loader in [
-        ("total", train_loader),
-        # ("val", val_loader),
-        # ("test", test_loader),
-    ]:
-        split_dir = output_root / split
-        print(f"\nMaking predictions for {split} split...")
-        scores = calculator.process_split(loader, split_dir)
-        print(f"Completed {split} split: {len(scores)} images processed")
+    for split_name, loader in dataloaders.items():
+        if loader is not None:
+            split_dir = output_root / split_name
+            print(f"\nMaking predictions for {split_name} split...")
+            scores = calculator.process_split(loader, split_dir, split_name, TRY_RUN)
+            print(f"Completed {split_name} split: {len(scores)} images processed")
+        else:
+            print(f"\nSkipping {split_name} split: no valid dataloader found")
 
     print("\nProcessing complete!")
 

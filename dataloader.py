@@ -259,7 +259,7 @@ def create_multi_compression_dataloaders(
     batch_size: int,
     quality_values: list = [10, 20, 30, 40, 50],
     num_workers: int = 4,
-) -> Tuple[DataLoader, DataLoader, DataLoader]:
+) -> Dict[str, DataLoader]:
     """
     Create dataloaders for multi-compression image sets.
 
@@ -270,21 +270,26 @@ def create_multi_compression_dataloaders(
         num_workers: Number of workers for data loading
 
     Returns:
-        Tuple of (train_loader, val_loader, test_loader)
+        Dictionary of dataloaders for each split
     """
     loaders = {}
 
-    for split in ["train"]:  # MultiCompressionDataset is only used for training
-        dataset = MultiCompressionDataset(
-            dataset_root, split, quality_values=quality_values
-        )
+    for split in ["train", "val", "test"]:  # Now processing all splits
+        try:
+            dataset = MultiCompressionDataset(
+                dataset_root, split, quality_values=quality_values
+            )
 
-        loaders[split] = DataLoader(
-            dataset,
-            batch_size=batch_size,
-            shuffle=(split == "train"),
-            num_workers=num_workers,
-            pin_memory=True,
-        )
+            loaders[split] = DataLoader(
+                dataset,
+                batch_size=batch_size,
+                shuffle=(split == "train"),
+                num_workers=num_workers,
+                pin_memory=True,
+            )
+            print(f"Created dataloader for {split} split with {len(dataset)} images")
+        except Exception as e:
+            print(f"Warning: Could not create dataloader for {split} split: {str(e)}")
+            loaders[split] = None
 
-    return loaders["train"]
+    return loaders

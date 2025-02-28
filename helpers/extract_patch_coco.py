@@ -4,7 +4,6 @@ import shutil
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor
 from tqdm import tqdm
-import random  # Added for random sampling
 
 
 def create_split_directories(base_path, splits=["train", "val", "test"]):
@@ -27,61 +26,15 @@ def create_split_directories(base_path, splits=["train", "val", "test"]):
             path.mkdir(parents=True, exist_ok=True)
 
 
-def split_images(image_files, val_ratio=0.00, test_ratio=0.00, seed=42):
-    """
-    Split image files into train, validation and test sets
-
-    Args:
-        image_files: List of image paths
-        val_ratio: Proportion of validation set
-        test_ratio: Proportion of test set
-        seed: Random seed for reproducibility
-
-    Returns:
-        Dictionary containing split image lists
-    """
-    random.seed(seed)
-    random.shuffle(image_files)
-
-    total = len(image_files)
-    test_idx = int(total * (1 - test_ratio))
-    val_idx = int(test_idx * (1 - val_ratio))
-
-    return {
-        "train": image_files[:val_idx],
-        "val": image_files[val_idx:test_idx],
-        "test": image_files[test_idx:],
-    }
-
-
-def get_center_crop_coordinates(height, width, crop_size):
-    """
-    Calculate coordinates for center cropping.
-
-    Args:
-        height (int): Image height
-        width (int): Image width
-        crop_size (int): Size of the square crop
-
-    Returns:
-        tuple: (y1, y2, x1, x2) coordinates for cropping
-    """
-    y1 = (height - crop_size) // 2
-    y2 = y1 + crop_size
-    x1 = (width - crop_size) // 2
-    x2 = x1 + crop_size
-    return y1, y2, x1, x2
-
-
 def process_image(args):
     """
-    Process a single image: load, crop, resize, and save.
-    Designed to be used with multiprocessing.
+    Process a single image: resize preserving aspect ratio, then center crop to get 320x320.
+    Smaller images are discarded.
 
     Args:
-        args (tuple): (image_path, output_path, target_size, min_acceptable_size)
+        args (tuple): (image_path, output_path, target_size)
     """
-    image_path, output_path, target_size, min_acceptable_size = args
+    image_path, output_path, target_size = args
 
     # Read image
     img = cv2.imread(str(image_path))
@@ -89,103 +42,114 @@ def process_image(args):
         return False
 
     height, width = img.shape[:2]
-    min_dim = min(height, width)
 
-    # Skip if image is too small
-    if min_dim < min_acceptable_size:
+    # Skip if image is smaller than target size in either dimension
+    if height < target_size or width < target_size:
         return False
 
-    # Determine crop size (use the smaller dimension)
-    crop_size = min_dim
+    # Calculate new dimensions while preserving aspect ratio
+    aspect_ratio = width / height
 
-    # Get crop coordinates
-    y1, y2, x1, x2 = get_center_crop_coordinates(height, width, crop_size)
+    if aspect_ratio > 1:  # Width > Height (landscape)
+        new_width = int(target_size * aspect_ratio)
+        new_height = target_size
+    else:  # Height >= Width (portrait or square)
+        new_width = target_size
+        new_height = int(target_size / aspect_ratio)
+
+    # Resize maintaining aspect ratio
+    resized = cv2.resize(img, (new_width, new_height), interpolation=cv2.INTER_AREA)
+
+    # Calculate crop coordinates to get center crop
+    y_start = (new_height - target_size) // 2
+    x_start = (new_width - target_size) // 2
 
     # Perform center crop
-    cropped = img[y1:y2, x1:x2]
-
-    # Resize if necessary (only downscaling)
-    if crop_size > target_size:
-        cropped = cv2.resize(
-            cropped, (target_size, target_size), interpolation=cv2.INTER_AREA
-        )
+    cropped = resized[y_start : y_start + target_size, x_start : x_start + target_size]
 
     # Save processed image
     cv2.imwrite(str(output_path), cropped)
     return True
 
 
+def process_split(input_dir, output_dir, split_name, target_size=320, num_workers=None):
+    """
+    Process all images from a specific split directory and save to output directory
+
+    Args:
+        input_dir: Input directory containing images
+        output_dir: Output base directory
+        split_name: Name of the split (train, val, test)
+        target_size: Target size for the output images
+        num_workers: Number of parallel workers
+    """
+    if num_workers is None:
+        num_workers = os.cpu_count()
+
+    input_path = Path(input_dir)
+    if not input_path.exists():
+        print(f"Warning: Directory {input_dir} does not exist, skipping...")
+        return
+
+    # Get image files
+    image_files = (
+        list(input_path.glob("*.jpg"))
+        + list(input_path.glob("*.jpeg"))
+        + list(input_path.glob("*.png"))
+    )
+    print(f"Found {len(image_files)} images in {input_dir}")
+
+    # Prepare arguments for processing
+    process_args = [
+        (
+            img_path,
+            Path(output_dir) / split_name / "extracted" / img_path.name,
+            target_size,
+        )
+        for img_path in image_files
+    ]
+
+    # Process images in parallel with progress bar
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        results = list(
+            tqdm(
+                executor.map(process_image, process_args),
+                total=len(process_args),
+                desc=f"Processing {split_name} images",
+            )
+        )
+
+    # Print split statistics
+    processed = sum(1 for r in results if r)
+    skipped = len(results) - processed
+    print(f"{split_name} split complete:")
+    print(f"Successfully processed: {processed} images")
+    print(f"Skipped (too small or invalid): {skipped} images")
+
+
 def main():
     # Configuration
-    INPUT_DIRS = [
-        "/andromeda/personal/jdamerini/open_images_v7/train_e",
-        "/andromeda/personal/jdamerini/visual_genome",
-        "/andromeda/personal/jdamerini/train2017",
-    ]
-    OUTPUT_DIR = "/andromeda/personal/jdamerini/unbalanced_dataset"
-    TARGET_SIZE = 320  # Target size for the square patches
-    MIN_ACCEPTABLE_SIZE = TARGET_SIZE  # Skip images smaller than this
+    INPUT_DIRS = {
+        "train": "/andromeda/personal/jdamerini/train2017",
+        "val": "/andromeda/personal/jdamerini/val2017",
+        "test": "/andromeda/personal/jdamerini/test2017",
+    }
+    OUTPUT_DIR = "/andromeda/personal/jdamerini/unbalanced_dataset_coco2017"
+    TARGET_SIZE = 320  # Target size for the square output images
     NUM_WORKERS = os.cpu_count()  # Use all available CPU cores
-    MAX_IMAGES = 1000000  # Maximum number of images to process
 
     # Create directory structure
     create_split_directories(OUTPUT_DIR)
 
-    # Get image files from all input directories
-    image_files = []
-    for input_dir in INPUT_DIRS:
-        input_path = Path(input_dir)
-        if not input_path.exists():
-            print(f"Warning: Directory {input_dir} does not exist, skipping...")
-            continue
-
-        input_images = (
-            list(input_path.glob("*.jpg"))
-            + list(input_path.glob("*.jpeg"))
-            + list(input_path.glob("*.png"))
-        )
-        image_files.extend(input_images)
-        print(f"Found {len(input_images)} images in {input_dir}")
-
-    print(f"Total images found: {len(image_files)}")
-
-    if MAX_IMAGES and MAX_IMAGES < len(image_files):
-        random.seed(42)
-        image_files = random.sample(image_files, MAX_IMAGES)
-
-    # Split datasets
-    splits = split_images(image_files)
-
     # Process each split
-    for split_name, split_files in splits.items():
-        print(f"\nProcessing {split_name} split...")
-
-        # Prepare arguments for processing
-        process_args = [
-            (
-                img_path,
-                Path(OUTPUT_DIR) / split_name / "extracted" / img_path.name,
-                TARGET_SIZE,
-                MIN_ACCEPTABLE_SIZE,
-            )
-            for img_path in split_files
-        ]
-
-        # Process images in parallel with progress bar
-        with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
-            results = list(
-                tqdm(
-                    executor.map(process_image, process_args),
-                    total=len(process_args),
-                    desc=f"Extracting {split_name} images",
-                )
-            )
-        # Print split statistics
-        processed = sum(1 for r in results if r)
-        skipped = len(results) - processed
-        print(f"{split_name} split complete:")
-        print(f"Successfully processed: {processed} images")
-        print(f"Skipped (too small): {skipped} images")
+    for split_name, input_dir in INPUT_DIRS.items():
+        process_split(
+            input_dir=input_dir,
+            output_dir=OUTPUT_DIR,
+            split_name=split_name,
+            target_size=TARGET_SIZE,
+            num_workers=NUM_WORKERS,
+        )
 
 
 if __name__ == "__main__":
