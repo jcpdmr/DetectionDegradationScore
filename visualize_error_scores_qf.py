@@ -39,95 +39,95 @@ class CompressionAnalyzer:
         """Create and save degradation analysis plots."""
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # # 1. Mean degradation curve
-        # mean_scores = self.df.groupby("quality_factor")["error_score"].mean()
-        # std_scores = self.df.groupby("quality_factor")["error_score"].std()
+        # 1. Mean degradation curve
+        mean_scores = self.df.groupby("quality_factor")["error_score"].mean()
+        std_scores = self.df.groupby("quality_factor")["error_score"].std()
 
-        # fig_mean = go.Figure()
-        # fig_mean.add_trace(
-        #     go.Scatter(
-        #         x=list(range(len(self.quality_factors))),  # Equispaced x-axis
-        #         y=mean_scores.values,
-        #         mode="lines+markers",
-        #         name="Mean Error Score",
-        #         error_y=dict(type="data", array=std_scores.values, visible=True),
-        #     )
-        # )
+        fig_mean = go.Figure()
+        fig_mean.add_trace(
+            go.Scatter(
+                x=list(range(len(self.quality_factors))),  # Equispaced x-axis
+                y=mean_scores.values,
+                mode="lines+markers",
+                name="Mean Error Score",
+                error_y=dict(type="data", array=std_scores.values, visible=True),
+            )
+        )
 
-        # # Update x-axis to show actual QF values as labels
-        # fig_mean.update_layout(
-        #     title="Mean Degradation Curve",
-        #     xaxis=dict(
-        #         title="Quality Factor",
-        #         tickmode="array",
-        #         ticktext=self.quality_factors,
-        #         tickvals=list(range(len(self.quality_factors))),
-        #     ),
-        #     yaxis=dict(title="Error Score"),
-        #     height=600,
-        #     width=800,
-        # )
-        # fig_mean.write_image(output_dir / "mean_degradation.png")
+        # Update x-axis to show actual QF values as labels
+        fig_mean.update_layout(
+            title="Mean Degradation Curve",
+            xaxis=dict(
+                title="Quality Factor",
+                tickmode="array",
+                ticktext=self.quality_factors,
+                tickvals=list(range(len(self.quality_factors))),
+            ),
+            yaxis=dict(title="Error Score"),
+            height=600,
+            width=800,
+        )
+        fig_mean.write_image(output_dir / "mean_degradation.png")
 
-        # # 2. Box plot
-        # fig_box = go.Figure()
+        # 2. Box plot
+        fig_box = go.Figure()
 
-        # # Create mapping between actual QF and equispaced positions
-        # qf_positions = {qf: i for i, qf in enumerate(self.quality_factors)}
+        # Create mapping between actual QF and equispaced positions
+        qf_positions = {qf: i for i, qf in enumerate(self.quality_factors)}
 
-        # # Create a new column in dataframe with equispaced positions
-        # temp_df = self.df.copy()
-        # temp_df["equispaced_pos"] = temp_df["quality_factor"].map(qf_positions)
+        # Create a new column in dataframe with equispaced positions
+        temp_df = self.df.copy()
+        temp_df["equispaced_pos"] = temp_df["quality_factor"].map(qf_positions)
 
-        # fig_box.add_trace(
-        #     go.Box(
-        #         x=temp_df["equispaced_pos"],  # Use equispaced positions
-        #         y=temp_df["error_score"],
-        #         name="Score Distribution",
-        #     )
-        # )
+        fig_box.add_trace(
+            go.Box(
+                x=temp_df["equispaced_pos"],  # Use equispaced positions
+                y=temp_df["error_score"],
+                name="Score Distribution",
+            )
+        )
 
-        # fig_box.update_layout(
-        #     title="Error Score Distribution",
-        #     xaxis=dict(
-        #         title="Quality Factor",
-        #         tickmode="array",
-        #         ticktext=self.quality_factors,  # Show actual QF values as labels
-        #         tickvals=list(
-        #             range(len(self.quality_factors))
-        #         ),  # Use equispaced positions
-        #     ),
-        #     yaxis=dict(title="Error Score"),
-        #     height=600,
-        #     width=800,
-        # )
-        # fig_box.write_image(output_dir / "error_distribution.png")
+        fig_box.update_layout(
+            title="Error Score Distribution",
+            xaxis=dict(
+                title="Quality Factor",
+                tickmode="array",
+                ticktext=self.quality_factors,  # Show actual QF values as labels
+                tickvals=list(
+                    range(len(self.quality_factors))
+                ),  # Use equispaced positions
+            ),
+            yaxis=dict(title="Error Score"),
+            height=600,
+            width=800,
+        )
+        fig_box.write_image(output_dir / "error_distribution.png")
 
         # Violin Plot
-        # import seaborn as sns
-        # import matplotlib.pyplot as plt
+        import seaborn as sns
+        import matplotlib.pyplot as plt
 
-        # plt.figure(figsize=(12, 8))
+        plt.figure(figsize=(12, 8))
 
-        # sns.violinplot(
-        #     data=self.df,
-        #     x="quality_factor",
-        #     y="error_score",
-        #     density_norm="area",  # Ensure equal areas
-        #     bw_adjust=0.8,  # Adjust bandwidth (>1 smoother, <1 more detailed)
-        #     inner="box",
-        #     width=1,
-        # )
+        sns.violinplot(
+            data=self.df,
+            x="quality_factor",
+            y="error_score",
+            density_norm="area",  # Ensure equal areas
+            bw_adjust=0.8,  # Adjust bandwidth (>1 smoother, <1 more detailed)
+            inner="box",
+            width=1,
+        )
 
-        # plt.title("Violin Plot of Error Scores")
-        # plt.ylim(0, 1)
-        # plt.xlabel("Quality Factor")
-        # plt.ylabel("Error Score")
-        # plt.grid(True, alpha=0.3)
+        plt.title("Violin Plot of Error Scores")
+        plt.ylim(0, 1)
+        plt.xlabel("Quality Factor")
+        plt.ylabel("Error Score")
+        plt.grid(True, alpha=0.3)
 
-        # # Save plot
-        # plt.savefig(output_dir / "violin_plot.png", bbox_inches="tight", dpi=300)
-        # plt.close()
+        # Save plot
+        plt.savefig(output_dir / "violin_plot.png", bbox_inches="tight", dpi=300)
+        plt.close()
 
         # Count error_score = 1 for each QF
         ones_count = {}
@@ -275,32 +275,46 @@ class CompressionAnalyzer:
 def main():
     # Configuration
     BASE_PATH = Path("error_scores_analysis/mapping")
-    ATTEMPT = "06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
-    OUTPUT_DIR = BASE_PATH / ATTEMPT / "total"
-    JSON_PATH = OUTPUT_DIR / "error_scores.json"
-
-    # Initialize analyzer
-    analyzer = CompressionAnalyzer(JSON_PATH)
-
-    # Generate plots
-    analyzer.plot_degradation_analysis(OUTPUT_DIR)
-
-    # # Get robust and sensitive images
-    # robust_images, sensitive_images = analyzer.analyze_image_robustness()
-
-    # # Save image lists
-    # with open(OUTPUT_DIR / "robust_images.txt", "w") as f:
-    #     f.write("\n".join(robust_images))
-
-    # with open(OUTPUT_DIR / "sensitive_images.txt", "w") as f:
-    #     f.write("\n".join(sensitive_images))
-
-    # Get random images
-    random_images = analyzer.get_random_images(n_images=1000, seed=42)
-
-    # Save random images list
-    with open(OUTPUT_DIR / "random_pick.txt", "w") as f:
-        f.write("\n".join(random_images))
+    ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
+    SPLITS = ["train", "val", "test"]  # Process all splits
+    
+    for split in SPLITS:
+        print(f"\n\n{'='*50}")
+        print(f"Processing {split.upper()} split")
+        print(f"{'='*50}\n")
+        
+        OUTPUT_DIR = BASE_PATH / ATTEMPT / split
+        JSON_PATH = OUTPUT_DIR / "error_scores.json"
+        
+        if not JSON_PATH.exists():
+            print(f"Warning: No error scores found for {split} split at {JSON_PATH}")
+            continue
+        
+        print(f"Loading error scores from: {JSON_PATH}")
+        
+        # Initialize analyzer for this split
+        analyzer = CompressionAnalyzer(JSON_PATH)
+        
+        # Generate plots
+        analyzer.plot_degradation_analysis(OUTPUT_DIR)
+        
+        # # Get robust and sensitive images
+        # robust_images, sensitive_images = analyzer.analyze_image_robustness()
+        # # Save image lists
+        # with open(OUTPUT_DIR / "robust_images.txt", "w") as f:
+        #     f.write("\n".join(robust_images))
+        # with open(OUTPUT_DIR / "sensitive_images.txt", "w") as f:
+        #     f.write("\n".join(sensitive_images))
+        
+        # Get random images
+        random_images = analyzer.get_random_images(n_images=1000, seed=42)
+        
+        # Save random images list
+        with open(OUTPUT_DIR / "random_pick.txt", "w") as f:
+            f.write("\n".join(random_images))
+        
+        print(f"Analysis complete for {split} split")
+        print(f"Results saved to {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":

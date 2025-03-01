@@ -1,9 +1,10 @@
 import json
 import numpy as np
 from collections import defaultdict
-from typing import Dict, List, Tuple, Set
+from typing import Dict
 import pandas as pd
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 
 class DatasetBalancer:
@@ -11,9 +12,7 @@ class DatasetBalancer:
         self,
         error_scores_path: str,
         n_bins: int = 40,
-        max_score: float = 0.8,  # New parameter
-        critical_range: Tuple[float, float] = (0.6, 0.8),  # Adjusted critical range
-        recalc_interval: int = 100,
+        max_score: float = 0.8,
     ):
         """
         Initialize the dataset balancer.
@@ -22,15 +21,11 @@ class DatasetBalancer:
             error_scores_path: Path to the JSON file containing error scores
             n_bins: Number of bins to divide the error scores into
             max_score: Maximum error score to consider
-            critical_range: Range of scores considered critical
-            recalc_interval: Number of images after which to recalculate critical bins
         """
         self.n_bins = n_bins
         self.max_score = max_score
         # Create bin edges from 0 to max_score
         self.bin_edges = np.linspace(0, max_score, n_bins + 1)
-        self.critical_range = critical_range
-        self.recalc_interval = recalc_interval
 
         # Load and process error scores
         with open(error_scores_path, "r") as f:
@@ -76,12 +71,6 @@ class DatasetBalancer:
                 if bin_idx < self.n_bins:
                     images_per_bin[bin_idx].add(img_id)
 
-        critical_images = sum(
-            1
-            for img_id, scores in self.error_scores.items()
-            if any(self._is_in_critical_range(score) for score in scores.values())
-        )
-
         return {
             "total_images": self.total_images,
             "total_scores": self.total_scores,
@@ -89,7 +78,6 @@ class DatasetBalancer:
             "images_per_bin": {
                 bin_idx: len(images) for bin_idx, images in images_per_bin.items()
             },
-            "critical_range_images": critical_images,
             "score_distribution": {
                 f"{self.bin_edges[i]:.2f}-{self.bin_edges[i + 1]:.2f}": len(
                     images_per_bin[i]
@@ -97,61 +85,6 @@ class DatasetBalancer:
                 for i in range(self.n_bins)
             },
         }
-
-    def _count_scores_in_bin(self, img_id: str, bin_idx: int) -> int:
-        """
-        Count how many error scores of an image fall into a specific bin.
-
-        Args:
-            img_id: Image identifier
-            bin_idx: Index of the bin
-
-        Returns:
-            Number of scores in the bin
-        """
-        bin_start = self.bin_edges[bin_idx]
-        bin_end = self.bin_edges[bin_idx + 1]
-        return sum(
-            1
-            for score in self.error_scores[img_id].values()
-            if bin_start <= score < bin_end
-        )
-
-    def _update_availability(self, used_images: Set[str]) -> Dict:
-        """
-        Update availability map excluding already used images.
-
-        Args:
-            used_images: Set of image IDs that have already been used
-
-        Returns:
-            Updated availability map
-        """
-        current_availability = defaultdict(list)
-
-        for img_id, scores in self.error_scores.items():
-            if img_id not in used_images:
-                for quality, score in scores.items():
-                    bin_idx = np.digitize(score, self.bin_edges) - 1
-                    if bin_idx < self.n_bins:
-                        current_availability[bin_idx].append(
-                            {"img_id": img_id, "quality": quality, "score": score}
-                        )
-
-        return current_availability
-
-    def _get_total_valid_bins(self, img_id: str) -> int:
-        """
-        Count in how many different bins an image can be allocated.
-
-        Args:
-            img_id: Image identifier
-
-        Returns:
-            Number of different bins where the image can be allocated
-        """
-        scores = self.error_scores[img_id].values()
-        return len(set(np.digitize(list(scores), self.bin_edges) - 1))
 
     def _create_availability_map(self) -> Dict:
         """
@@ -168,67 +101,7 @@ class DatasetBalancer:
                     )
 
         return availability
-
-    def _is_in_critical_range(self, score: float) -> bool:
-        """Check if a score falls within the critical range."""
-        return self.critical_range[0] <= score <= self.critical_range[1]
-
-    def _find_critical_bins(self, current_availability: Dict) -> List[int]:
-        """
-        Identify bins with fewest available images.
-
-        Args:
-            current_availability: Current availability map
-
-        Returns:
-            List of critical bin indices
-        """
-        # Count available images per bin
-        bin_counts = {i: len(imgs) for i, imgs in current_availability.items()}
-
-        if not bin_counts:
-            return []
-
-        # Calculate statistics
-        mean_count = np.mean(list(bin_counts.values()))
-        min_count = min(bin_counts.values())
-
-        # Consider a bin critical if:
-        # 1. It has less than mean_count * 0.8 images OR
-        # 2. It has less than min_count * 1.2 images
-        critical_bins = []
-        for bin_idx in range(self.n_bins):
-            if bin_idx in bin_counts:
-                count = bin_counts[bin_idx]
-                if count < mean_count * 0.8 or count <= min_count * 1.2:
-                    critical_bins.append(bin_idx)
-
-        # Sort by count to prioritize most critical
-        return sorted(critical_bins, key=lambda x: bin_counts[x])
-
-    def _sort_available_images(self, available: List[Dict], bin_idx: int) -> List[Dict]:
-        """
-        Sort available images for a specific bin based on optimization criteria.
-
-        Args:
-            available: List of available images for the bin
-            bin_idx: Index of the bin being processed
-
-        Returns:
-            Sorted list of available images
-        """
-        return sorted(
-            available,
-            key=lambda x: (
-                self._count_scores_in_bin(
-                    x["img_id"], bin_idx
-                ),  # Primary: options in current bin
-                -self._get_total_valid_bins(
-                    x["img_id"]
-                ),  # Secondary: total bins available
-            ),
-        )
-
+    
     def _update_final_stats(self, selected_items: Dict, bin_counts: Dict):
         """
         Update final statistics after dataset creation.
@@ -332,12 +205,12 @@ class DatasetBalancer:
             emptiest_bin = current_counts.index(min_filled)
 
             # Determine how many images to select in this iteration
-            n_select = max(1, int(min_available * 0.01))
+            n_select = max(1, int(min_available * 0.0001))
 
-            print("\nIteration status:")
-            print(f"Min available: {min_available}")
-            print(f"Most empty bin: {emptiest_bin} (contains {min_filled} images)")
-            print(f"Will select {n_select} images")
+            # print("\nIteration status:")
+            # print(f"Min available: {min_available}")
+            # print(f"Most empty bin: {emptiest_bin} (contains {min_filled} images)")
+            # print(f"Will select {n_select} images")
 
             # Select images from the emptiest bin
             selected_count = 0
@@ -375,11 +248,11 @@ class DatasetBalancer:
                 break
 
             # Print current distribution every iteration
-            print("\nCurrent distribution:")
-            counts = [bin_counts[i] for i in range(self.n_bins)]
-            print(
-                f"Min: {min(counts)}, Max: {max(counts)}, Diff: {max(counts) - min(counts)}"
-            )
+            # print("\nCurrent distribution:")
+            # counts = [bin_counts[i] for i in range(self.n_bins)]
+            # print(
+            #     f"Min: {min(counts)}, Max: {max(counts)}, Diff: {max(counts) - min(counts)}"
+            # )
 
         print("\nFinal distribution:")
         final_counts = [bin_counts[i] for i in range(self.n_bins)]
@@ -425,10 +298,6 @@ class DatasetBalancer:
         print(
             f"Average scores per image: {self.stats['initial_stats']['avg_scores_per_image']:.2f}"
         )
-        print(
-            f"Images in critical range ({self.critical_range[0]}-{self.critical_range[1]}): "
-            f"{self.stats['initial_stats']['critical_range_images']}"
-        )
 
         if self.stats["final_stats"]:
             print("\n=== Final Dataset Statistics ===")
@@ -460,7 +329,7 @@ class DatasetBalancer:
                 )
 
 
-def validate_dataset(json_file, img_file):
+def validate_dataset(json_file, img_file, n_bins, max_score):
     """
     Validate the dataset and create distribution visualization.
     """
@@ -483,9 +352,8 @@ def validate_dataset(json_file, img_file):
     else:
         print("No duplicate images found.")
 
-    # Create bin edges (40 bins from 0 to 0.8)
-    n_bins = 40
-    bin_edges = np.linspace(0, 0.8, n_bins + 1)
+    # Create bin edges
+    bin_edges = np.linspace(0, max_score, n_bins + 1)
 
     # Validate bin assignments and count distribution
     bin_distribution = np.zeros(n_bins, dtype=int)
@@ -533,17 +401,17 @@ def validate_dataset(json_file, img_file):
     plt.figure(figsize=(15, 7))
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
     plt.bar(bin_centers, bin_distribution, width=0.4 / n_bins, alpha=0.7)
-    plt.xlabel("Score Range (0-0.8)")
+    plt.xlabel(f"Score Range (0-{max_score})")
     plt.ylabel("Number of Images")
-    plt.title("Distribution of Images Across Bins (0-0.8)")
+    plt.title(f"Distribution of Images Across Bins (0-{max_score})")
     plt.grid(True, alpha=0.3)
 
     # Add bin edges annotations
-    for i, count in enumerate(bin_distribution):
-        if count > 0:  # Only annotate non-empty bins
-            plt.text(
-                bin_centers[i], count, f"Bin {i}\n({count})", ha="center", va="bottom"
-            )
+    # for i, count in enumerate(bin_distribution):
+    #     if count > 0:  # Only annotate non-empty bins
+    #         plt.text(
+    #             bin_centers[i], count, f"Bin {i}\n({count})", ha="center", va="bottom"
+    #         )
 
     # Add x-axis ticks at bin edges
     plt.xticks(bin_edges[::2], [f"{x:.2f}" for x in bin_edges[::2]], rotation=45)
@@ -561,30 +429,53 @@ def validate_dataset(json_file, img_file):
 
 if __name__ == "__main__":
     N_BINS = 40
-    MAX_SCORE = 0.8  # New parameter
-    MULTI_ERROR_SCORES_PATH = "error_scores_analysis/mapping/06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444/total/error_scores.json"
-    OUTPUT_BAL_DATASET_JSON = "balanced_dataset_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.json"
-    OUTPUT_DISTRIBUTION_IMG = "balanced_dataset_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.png"
-
-    balancer = DatasetBalancer(
-        error_scores_path=MULTI_ERROR_SCORES_PATH,
-        n_bins=N_BINS,
-        max_score=MAX_SCORE,
-        critical_range=(0.6, 0.8),
-    )
-    selected_items = balancer.create_balanced_dataset()
-    balancer.print_statistics()
-
-    # Save results
-    with open(OUTPUT_BAL_DATASET_JSON, "w") as f:
-        json.dump(
-            {
-                "selected_items": balancer._convert_numpy_types(selected_items),
-                "statistics": balancer._convert_numpy_types(balancer.stats),
-            },
-            f,
-            indent=4,
+    MAX_SCORE = 0.8
+    ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
+    BASE_DIR = f"error_scores_analysis/mapping/{ATTEMPT}"
+    SPLITS = ["train", "val", "test"]  # Process all splits
+    
+    for split in SPLITS:
+        print(f"\n\n{'='*50}")
+        print(f"Processing {split.upper()} dataset")
+        print(f"{'='*50}\n")
+        
+        # Create output directory
+        output_dir = Path(BASE_DIR) / split
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Define paths for this split
+        error_scores_path = Path(BASE_DIR) / split / "error_scores.json"
+        output_json = output_dir / "balanced_dataset.json"
+        output_img = output_dir / "balanced_dataset.png"
+        
+        if not error_scores_path.exists():
+            print(f"Warning: No error scores found for {split} split at {error_scores_path}")
+            continue
+            
+        print(f"Loading error scores from: {error_scores_path}")
+        
+        # Create balancer and process dataset
+        balancer = DatasetBalancer(
+            error_scores_path=str(error_scores_path),
+            n_bins=N_BINS,
+            max_score=MAX_SCORE
         )
-
-    # Validate the dataset
-    results = validate_dataset(OUTPUT_BAL_DATASET_JSON, OUTPUT_DISTRIBUTION_IMG)
+        selected_items = balancer.create_balanced_dataset()
+        balancer.print_statistics()
+        
+        # Save results
+        with open(output_json, "w") as f:
+            json.dump(
+                {
+                    "selected_items": balancer._convert_numpy_types(selected_items),
+                    "statistics": balancer._convert_numpy_types(balancer.stats),
+                },
+                f,
+                indent=4,
+            )
+        
+        # Validate the dataset
+        print(f"\nValidating {split} dataset...")
+        results = validate_dataset(str(output_json), str(output_img), N_BINS, MAX_SCORE)
+        print(f"Saved balanced dataset to {output_json}")
+        print(f"Saved distribution image to {output_img}")
