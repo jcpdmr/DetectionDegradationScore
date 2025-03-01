@@ -280,7 +280,7 @@ def main():
     
     for split in SPLITS:
         print(f"\n\n{'='*50}")
-        print(f"Processing {split.upper()} split")
+        print(f"Visualizing error-QF for {split.upper()} split")
         print(f"{'='*50}\n")
         
         OUTPUT_DIR = BASE_PATH / ATTEMPT / split
@@ -314,7 +314,7 @@ def main():
             f.write("\n".join(random_images))
         
         print(f"Analysis complete for {split} split")
-        print(f"Results saved to {OUTPUT_DIR}")
+        print(f"Graphs and results saved to {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
