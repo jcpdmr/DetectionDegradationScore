@@ -269,25 +269,40 @@ class DatasetValidator:
 class DatasetOrganizer:
     """
     Organizes dataset by copying files from unbalanced to balanced structure
-    according to split information
+    according to balanced dataset information from three separate files
     """
 
     def __init__(
         self,
-        split_file: Union[str, Path],
+        balanced_files: Dict[str, Path],
         unbalanced_path: Union[str, Path],
         balanced_path: Union[str, Path],
         clean_existing: bool = True,
     ):
-        self.split_file = Path(split_file)
+        """
+        Initialize the dataset organizer.
+        
+        Args:
+            balanced_files: Dictionary mapping split names to their balanced dataset files
+            unbalanced_path: Path to the unbalanced dataset
+            balanced_path: Path to store the balanced dataset
+            clean_existing: Whether to clean existing directories
+        """
+        self.balanced_files = {k: Path(v) for k, v in balanced_files.items()}
         self.unbalanced_path = Path(unbalanced_path)
         self.balanced_path = Path(balanced_path)
         self.clean_existing = clean_existing
+        self.split_info = {}
 
     def load_split_info(self) -> Dict:
-        """Load the split information from JSON file"""
-        with open(self.split_file, "r") as f:
-            return json.load(f)
+        """Load the balanced dataset information from JSON files"""
+        for split, file_path in self.balanced_files.items():
+            with open(file_path, "r") as f:
+                data = json.load(f)
+                self.split_info[split] = data.get("selected_items", {})
+                
+            print(f"Loaded {len(self.split_info[split])} items from {split} balanced dataset")
+        return self.split_info
 
     def create_directory_structure(self):
         """Create or clean the directory structure for the balanced dataset"""
@@ -305,98 +320,119 @@ class DatasetOrganizer:
                 path.mkdir(parents=True, exist_ok=True)
                 print(f"Created {path}")
 
-    def copy_image(self, img_name: str, quality: str, split: str):
+    def copy_image(self, img_name: str, quality: str, source_split: str, target_split: str):
         """
         Copy both extracted and compressed versions of an image to their respective locations
+        
+        Args:
+            img_name: Image filename
+            quality: JPEG quality value
+            source_split: Source split (train, val, test)
+            target_split: Target split (train, val, test)
         """
         # Copy extracted image
-        src_extracted = self.unbalanced_path / "train" / "extracted" / img_name
-        dst_extracted = self.balanced_path / split / "extracted" / img_name
+        src_extracted = self.unbalanced_path / source_split / "extracted" / img_name
+        dst_extracted = self.balanced_path / target_split / "extracted" / img_name
 
         # Copy compressed image (from specific quality folder)
         src_compressed = (
-            self.unbalanced_path / "train" / f"compressed{quality}" / img_name
+            self.unbalanced_path / source_split / f"compressed{quality}" / img_name
         )
-        dst_compressed = self.balanced_path / split / "compressed" / img_name
+        dst_compressed = self.balanced_path / target_split / "compressed" / img_name
 
         try:
             shutil.copy2(src_extracted, dst_extracted)
             shutil.copy2(src_compressed, dst_compressed)
+            return True
         except FileNotFoundError as e:
-            print(f"Error copying {img_name}: {str(e)}")
+            print(f"Error copying {img_name} from {source_split}: {str(e)}")
+            return False
         except Exception as e:
-            print(f"Unexpected error copying {img_name}: {str(e)}")
+            print(f"Unexpected error copying {img_name} from {source_split}: {str(e)}")
+            return False
 
     def organize_dataset(self):
-        """Main method to organize the dataset according to split information"""
-        # Load split information
-        split_info = self.load_split_info()
+        """Main method to organize the dataset according to balanced dataset information"""
+        # Load balanced dataset information
+        self.load_split_info()
 
         # Create directory structure
         self.create_directory_structure()
 
         # Process each split
         total_processed = 0
-        for split in ["train", "val", "test"]:
-            print(f"Processing {split} split...")
+        success_count = 0
+        fail_count = 0
 
-            for img_name, info in split_info[split].items():
-                self.copy_image(img_name, info["quality"], split)
+        for target_split, items in self.split_info.items():
+            print(f"Processing {target_split} split...")
+            
+            for img_name, info in items.items():
+                # Use same split for source and target (train->train, val->val, test->test)
+                source_split = target_split
+                
+                success = self.copy_image(img_name, info["quality"], source_split, target_split)
                 total_processed += 1
+                
+                if success:
+                    success_count += 1
+                else:
+                    fail_count += 1
 
                 if total_processed % 10000 == 0:
-                    print(f"Processed {total_processed} images")
+                    print(f"Processed {total_processed} images ({success_count} successful, {fail_count} failed)")
 
         print(
-            f"Dataset organization completed. Total images processed: {total_processed}"
+            f"Dataset organization completed. Total: {total_processed}, Successful: {success_count}, Failed: {fail_count}"
         )
 
-        # Validate dataset and create error scores
-        validator = DatasetValidator(self.balanced_path, split_info)
+        # Create error scores for each split
+        self.create_error_scores()
+        
+        print("Error scores created for all splits")
 
-        # Validate all splits
-        all_missing_files = []
-        for split in ["train", "val", "test"]:
-            missing_files = validator.validate_split(split)
-            if missing_files:
-                all_missing_files.extend(missing_files)
+    def create_error_scores(self):
+        """Create error_scores.json for each split"""
+        for split, items in self.split_info.items():
+            error_scores = {
+                img_name: info["score"] for img_name, info in items.items()
+            }
 
-            # Create error_scores.json for each split
-            validator.create_error_scores(split)
-
-        # Report validation results
-        if all_missing_files:
-            print("\nValidation Error: Missing files detected:")
-            for file in all_missing_files:
-                print(f"  - {file}")
-            raise Exception("Dataset validation failed: Missing files detected")
-        else:
-            print("\nValidation successful: All files present")
+            output_file = self.balanced_path / split / "error_scores.json"
+            with open(output_file, "w") as f:
+                json.dump(error_scores, f, indent=4)
+                
+            print(f"Created error_scores.json for {split} with {len(error_scores)} items")
 
 
 if __name__ == "__main__":
-    # Hardcoded configuration
-    INPUT_PATH = "balanced_dataset_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444.json"
-    OUTPUT_PATH = "split.json"
-    VAL_SPLIT = 0.05
-    TEST_SPLIT = 0.05
-    SEED = 42
 
-    # Create and run splitter
-    splitter = DatasetSplitter(
-        input_path=INPUT_PATH,
-        output_path=OUTPUT_PATH,
-        val_split=VAL_SPLIT,
-        test_split=TEST_SPLIT,
-        seed=SEED,
-    )
-    splitter.process()
+    ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
+    BASE_DIR = f"error_scores_analysis/mapping/{ATTEMPT}"
 
-    # Hardcoded configuration
+    # OUTPUT_PATH = "split.json"
+    # VAL_SPLIT = 0.05
+    # TEST_SPLIT = 0.05
+    # SEED = 42
+
+    # # Create and run splitter
+    # splitter = DatasetSplitter(
+    #     input_path=INPUT_PATH,
+    #     output_path=OUTPUT_PATH,
+    #     val_split=VAL_SPLIT,
+    #     test_split=TEST_SPLIT,
+    #     seed=SEED,
+    # )
+    # splitter.process()
+
     CONFIG = {
-        "split_file": "split.json",
-        "unbalanced_path": "/andromeda/personal/jdamerini/unbalanced_dataset",
-        "balanced_path": "balanced_dataset",
+        "balanced_files": {
+            "train": f"{BASE_DIR}/train/balanced_dataset.json",
+            "val": f"{BASE_DIR}/val/balanced_dataset.json",
+            "test": f"{BASE_DIR}/test/balanced_dataset.json",
+        },
+        "unbalanced_path": "/andromeda/personal/jdamerini/unbalanced_dataset_coco2017",
+        "balanced_path": "balanced_dataset_coco2017",
         "clean_existing": True,
     }
 
