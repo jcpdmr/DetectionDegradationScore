@@ -124,7 +124,7 @@ class MultiCompressionErrorScoreCalculator:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Save scores with split name in filename
-        scores_file = output_dir / f"error_scores_{split_name}.json"
+        scores_file = output_dir / "error_scores.json"
         with open(scores_file, "w") as f:
             json.dump(scores_dict, f, indent=4)
 
@@ -149,13 +149,13 @@ def main():
     # Configuration
     GPU_ID = 0
     device = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
-    DATA_ROOT = "/path/to/unbalanced_dataset_coco2017"  # Updated path
+    DATA_ROOT = "/andromeda/personal/jdamerini/unbalanced_dataset_coco2017"
     ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     OUTPUT_ROOT = f"error_scores_analysis/mapping/{ATTEMPT}"
-    BATCH_SIZE = 128
+    BATCH_SIZE = 210
     MODEL_PATH = "../yolo11m.pt"
     QUALITY_VALUES = [20, 25, 30, 35, 40, 45, 50]  # Adjusted quality values
-    TRY_RUN = True  # Set to False to process the entire dataset
+    TRY_RUN = False  # Set to False to process the entire dataset
 
     # Create timestamped directory
     timestamp = get_timestamp_dir()
