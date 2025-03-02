@@ -5,9 +5,10 @@ from typing import List, Dict
 
 
 class SimpleBottleneckBlock(nn.Module):
-    def __init__(self, channels, reduction_factor=4):
+    def __init__(self, channels, reduction_factor=1.5):
         super().__init__()
-        hidden_channels = channels // reduction_factor
+        # hidden_channels = channels // reduction_factor
+        hidden_channels = int(channels * reduction_factor)
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(channels, hidden_channels, 1),
@@ -121,7 +122,7 @@ class MultiFeatureQualityModel(nn.Module):
         """Creates a layer processor module."""
         return nn.Sequential(
             ChannelReductionBlock(
-                in_channels=feature_channels * 3, reduction_factor=12
+                in_channels=feature_channels * 2, reduction_factor=8
             ),
             SimpleBottleneckBlock(
                 channels=feature_channels // 4
@@ -151,10 +152,10 @@ class MultiFeatureQualityModel(nn.Module):
             mod_feature = mod_features_dict[layer_idx]
 
             # 1. Concatenate GT and MOD features
-            features_diff = gt_feature - mod_feature  # [B, C_i, H_i, W_i]
+            # features_diff = gt_feature - mod_feature  # [B, C_i, H_i, W_i]
             concatenated_features = torch.cat(
-                [gt_feature, mod_feature, features_diff], dim=1
-            )  # [B, 3*C_i, H_i, W_i]
+                [gt_feature, mod_feature], dim=1
+            )  # [B, 2*C_i, H_i, W_i]
 
             # 2 & 3. Channel Reduction and Bottleneck Block
             processed_features = self.layer_processors[i](

@@ -153,7 +153,7 @@ class QualityTrainer:
                     "lr": learning_rate,
                 }
             ],
-            weight_decay=0.01,
+            weight_decay=1e-4,
         )
         print(f"Optimizer: {self.optimizer}")
 
@@ -425,10 +425,10 @@ def main():
     GPU_ID = 2
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
     ERROR_SCORES_ROOT = "balanced_dataset_coco2017"
-    BATCH_SIZE = 100
+    BATCH_SIZE = 150
     NUM_EPOCHS = 50
     LEARNING_RATE = 1e-3
-    ATTEMPT = 27
+    ATTEMPT = 28
     DIR = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_{DIR}"
     TRY_RUN = False
