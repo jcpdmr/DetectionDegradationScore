@@ -400,11 +400,12 @@ def validate_dataset(json_file, img_file, n_bins, max_score):
     # Modify plot
     plt.figure(figsize=(15, 7))
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-    plt.bar(bin_centers, bin_distribution, width=0.4 / n_bins, alpha=0.7)
+    plt.bar(bin_centers, bin_distribution, width=0.018, alpha=0.7)
     plt.xlabel(f"Score Range (0-{max_score})")
     plt.ylabel("Number of Images")
     plt.title(f"Distribution of Images Across Bins (0-{max_score})")
     plt.grid(True, alpha=0.3)
+    plt.xlim(0, max_score)
 
     # Add bin edges annotations
     # for i, count in enumerate(bin_distribution):
