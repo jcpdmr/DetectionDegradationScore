@@ -5,10 +5,9 @@ from typing import List, Dict
 
 
 class SimpleBottleneckBlock(nn.Module):
-    def __init__(self, channels, reduction_factor=1.5):
+    def __init__(self, channels, reduction_factor=4):
         super().__init__()
-        # hidden_channels = channels // reduction_factor
-        hidden_channels = int(channels * reduction_factor)
+        hidden_channels = channels // reduction_factor
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(channels, hidden_channels, 1),
@@ -121,9 +120,7 @@ class MultiFeatureQualityModel(nn.Module):
     def _make_layer_processor(self, feature_channels):
         """Creates a layer processor module."""
         return nn.Sequential(
-            ChannelReductionBlock(
-                in_channels=feature_channels * 2, reduction_factor=8
-            ),
+            ChannelReductionBlock(in_channels=feature_channels * 2, reduction_factor=8),
             SimpleBottleneckBlock(
                 channels=feature_channels // 4
             ),  # Process with bottleneck
@@ -163,7 +160,7 @@ class MultiFeatureQualityModel(nn.Module):
             )  # [B, C_i/4, H_i, W_i]
 
             # 4. Global Max Spatial Pooling (directly to 1x1)
-            pooled_features = F.adaptive_max_pool2d(
+            pooled_features = F.adaptive_avg_pool2d(
                 processed_features, output_size=(2, 2)
             )  # [B, C_i/4, 2, 2]
 
