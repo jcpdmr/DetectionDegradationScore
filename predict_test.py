@@ -143,12 +143,16 @@ def predict_test_set(
 
 def main():
     # Configuration
-    TRIAL = "attempt26_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    GPU_ID = 2
+    DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
+    ATTEMPT = 28
+    DIR = "40bins_point8_07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
+    TRIAL = f"attempt{ATTEMPT}_{DIR}"
     MODEL_PATH = f"checkpoints/{TRIAL}/best_model.pt"
-    IMGS_ROOT = "balanced_dataset"
-    ERROR_SCORES_ROOT = "balanced_dataset"
+    IMGS_ROOT = "balanced_dataset_coco2017"
+    ERROR_SCORES_ROOT = "balanced_dataset_coco2017"
     OUTPUT_PATH = f"checkpoints/{TRIAL}/test_predictions.json"
-    BACKBONE = Backbone.EFFICIENTNET_V2_M
+    BACKBONE = Backbone.YOLO_V11_M
 
     predict_test_set(
         model_path=MODEL_PATH,
@@ -158,6 +162,7 @@ def main():
         batch_size=128,
         weights_path="yolo11m.pt",
         backbone_name=BACKBONE,
+        device=DEVICE,
     )
 
 
