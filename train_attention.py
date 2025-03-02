@@ -422,17 +422,18 @@ def main():
     Main training script.
     """
     # Configuration
-    GPU_ID = 1
+    GPU_ID = 2
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
-    ERROR_SCORES_ROOT = "balanced_dataset"
-    BATCH_SIZE = 760
+    ERROR_SCORES_ROOT = "balanced_dataset_coco2017"
+    BATCH_SIZE = 100
     NUM_EPOCHS = 50
     LEARNING_RATE = 1e-3
-    ATTEMPT = 26
-    CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    ATTEMPT = 27
+    DIR = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
+    CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_{DIR}"
     TRY_RUN = False
     USE_ONLINE_WANDB = True
-    BACKBONE = Backbone.EFFICIENTNET_V2_M
+    BACKBONE = Backbone.YOLO_V11_M
 
     from dataloader import create_dataloaders
 
