@@ -5,9 +5,9 @@ from typing import List, Dict
 
 
 class SimpleBottleneckBlock(nn.Module):
-    def __init__(self, channels, reduction_factor=4):
+    def __init__(self, channels, expansion_factor=1.5):
         super().__init__()
-        hidden_channels = channels // reduction_factor
+        hidden_channels = int(channels * expansion_factor)
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(channels, hidden_channels, 1),
@@ -53,7 +53,7 @@ class LightResidualMLPBlock(nn.Module):
     def __init__(self, hidden_dim, dropout=0.1):
         super().__init__()
 
-        expanded_dim = int(hidden_dim * 1.5)
+        expanded_dim = int(hidden_dim * 2)
 
         self.mlp = nn.Sequential(
             nn.Linear(hidden_dim, expanded_dim),
@@ -111,22 +111,23 @@ class MultiFeatureQualityModel(nn.Module):
         self.mlp_predictor = nn.Sequential(
             LightResidualMLPBlock(hidden_dim=256),
             LightResidualMLPBlock(hidden_dim=256),
-            # LightResidualMLPBlock(hidden_dim=256),
-            # LightResidualMLPBlock(hidden_dim=256),
+            LightResidualMLPBlock(hidden_dim=256),
+            LightResidualMLPBlock(hidden_dim=256),
             nn.Linear(256, 1),  # Input dim matches hidden_dim of LightResidualMLPBlock
             nn.Sigmoid(),
         )
 
     def _make_layer_processor(self, feature_channels):
-        """Creates a layer processor module."""
+        """Creates a layer processor module with gradual channel reduction."""
         return nn.Sequential(
-            ChannelReductionBlock(in_channels=feature_channels * 2, reduction_factor=8),
-            SimpleBottleneckBlock(
-                channels=feature_channels // 4
-            ),  # Process with bottleneck
-            SimpleBottleneckBlock(
-                channels=feature_channels // 4
-            ),  # Process with bottleneck
+            ChannelReductionBlock(in_channels=feature_channels * 2, reduction_factor=2),
+            SimpleBottleneckBlock(channels=feature_channels),
+            ChannelReductionBlock(in_channels=feature_channels, reduction_factor=2),
+            SimpleBottleneckBlock(channels=feature_channels // 2),
+            ChannelReductionBlock(
+                in_channels=feature_channels // 2, reduction_factor=2
+            ),
+            SimpleBottleneckBlock(channels=feature_channels // 4),
         )
 
     def _get_pooled_feature_dims(self, layer_channels: List[int]) -> List[int]:
