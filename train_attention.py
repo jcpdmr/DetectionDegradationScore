@@ -153,7 +153,7 @@ class QualityTrainer:
                     "lr": learning_rate,
                 }
             ],
-            weight_decay=1e-4,
+            weight_decay=1e-3,
         )
         print(f"Optimizer: {self.optimizer}")
 
@@ -427,8 +427,8 @@ def main():
     ERROR_SCORES_ROOT = "balanced_dataset_coco2017"
     BATCH_SIZE = 210
     NUM_EPOCHS = 50
-    LEARNING_RATE = 1e-4
-    ATTEMPT = 33
+    LEARNING_RATE = 1e-3
+    ATTEMPT = 35
     DIR = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_{DIR}"
     TRY_RUN = False

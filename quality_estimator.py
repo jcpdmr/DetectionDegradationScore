@@ -4,6 +4,44 @@ import torch.nn.functional as F
 from typing import List, Dict
 
 
+class ChannelAttention(nn.Module):
+    def __init__(self, channel, reduction_ratio=16):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(channel, channel // reduction_ratio, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channel // reduction_ratio, channel, bias=False),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y.expand_as(x)
+
+
+class AttentionWeightedChannelReductionBlock(nn.Module):
+    def __init__(self, in_channels, reduction_factor=12, reduction_ratio_attention=16):
+        super().__init__()
+        reduced_channels = in_channels // reduction_factor
+        self.channel_attention = ChannelAttention(
+            in_channels, reduction_ratio_attention
+        )
+        self.reduction_conv = nn.Sequential(
+            nn.Conv2d(in_channels, reduced_channels, kernel_size=1),
+            nn.BatchNorm2d(reduced_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        attention_weights = self.channel_attention(x)  # [B, C_in, H, W]
+        weighted_input = x * attention_weights  # [B, C_in, H, W]
+        reduced_features = self.reduction_conv(weighted_input)  # [B, C_reduced, H, W]
+        return reduced_features
+
+
 class SimpleBottleneckBlock(nn.Module):
     def __init__(self, channels, expansion_factor=1.5):
         super().__init__()
@@ -118,23 +156,27 @@ class MultiFeatureQualityModel(nn.Module):
         )
 
     def _make_layer_processor(self, feature_channels):
-        """Creates a layer processor module with gradual channel reduction."""
+        """Creates a layer processor module with faster channel reduction (4x, 2x, 2x) and attention-weighted reduction."""
         return nn.Sequential(
-            ChannelReductionBlock(in_channels=feature_channels * 2, reduction_factor=2),
-            SimpleBottleneckBlock(channels=feature_channels),
-            ChannelReductionBlock(in_channels=feature_channels, reduction_factor=2),
+            AttentionWeightedChannelReductionBlock(
+                in_channels=feature_channels * 2, reduction_factor=4
+            ),
             SimpleBottleneckBlock(channels=feature_channels // 2),
-            ChannelReductionBlock(
+            AttentionWeightedChannelReductionBlock(
                 in_channels=feature_channels // 2, reduction_factor=2
             ),
             SimpleBottleneckBlock(channels=feature_channels // 4),
+            AttentionWeightedChannelReductionBlock(
+                in_channels=feature_channels // 4, reduction_factor=2
+            ),
+            SimpleBottleneckBlock(channels=feature_channels // 8),
         )
 
     def _get_pooled_feature_dims(self, layer_channels: List[int]) -> List[int]:
         """Calculates the output dimension after pooling for each layer. Now it's just channels after bottleneck as we use global pooling."""
         pooled_dims = []
         for i in range(len(layer_channels)):
-            pooled_dim = layer_channels[i] // 4
+            pooled_dim = layer_channels[i] // 8
             pooled_dims.append(pooled_dim)
         return pooled_dims
 
@@ -158,21 +200,21 @@ class MultiFeatureQualityModel(nn.Module):
             # 2 & 3. Channel Reduction and Bottleneck Block
             processed_features = self.layer_processors[i](
                 concatenated_features
-            )  # [B, C_i/4, H_i, W_i]
+            )  # [B, C_i/8, H_i, W_i]
 
             # 4. Global Max Spatial Pooling (directly to 1x1)
             pooled_features = F.adaptive_avg_pool2d(
                 processed_features, output_size=(2, 2)
-            )  # [B, C_i/4, 2, 2]
+            )  # [B, C_i/8, 2, 2]
 
             # 5. Flatten
-            flattened_features = torch.flatten(pooled_features, 1)  # [B, C_i/4 * 2 * 2]
+            flattened_features = torch.flatten(pooled_features, 1)  # [B, C_i/8 * 2 * 2]
             layer_feature_vectors.append(flattened_features)
 
         # Concatenate feature vectors from all layers
         combined_features_vector = torch.cat(
             layer_feature_vectors, dim=1
-        )  # [B, sum(C_i/4 * 2 * 2)]
+        )  # [B, sum(C_i/8 * 2 * 2)]
 
         # Optional final channel reduction with 1x1 conv
         reduced_features = (
