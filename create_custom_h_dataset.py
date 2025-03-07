@@ -12,24 +12,31 @@ import sys
 def create_directory_structure(base_path, splits, clean=True):
     """
     Create the required directory structure for all splits (train, val, test)
+    Cleans individual split directories if requested, rather than the entire base directory
 
     Args:
-        base_path (str): Base path where to create the directory structure
+        base_path (str): Base path where to create the directory structure (already includes 2afc)
         splits (list): List of splits to create directories for
-        clean (bool): If True, removes existing directories before creating new ones
+        clean (bool): If True, removes existing split directories before creating new ones
     """
-    # Define the base directory for 2afc
-    afc_dir = Path(f"{base_path}")
-
-    # Clean if requested and directory exists
-    if clean and afc_dir.exists():
-        print(f"Cleaning existing directory structure at {afc_dir}")
-        shutil.rmtree(afc_dir)
-
-    # Create directories
+    # Define the base directory
+    base_dir = Path(base_path)
+    
+    # Make sure the base directory exists
+    base_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create directories for each split
     for split in splits:
+        split_dir = base_dir / split / "custom"
+        
+        # Clean this specific split directory if requested
+        if clean and split_dir.exists():
+            print(f"Cleaning directory structure for split: {split}")
+            shutil.rmtree(split_dir)
+        
+        # Create subdirectories for this split
         for subdir in ["judge", "p0", "p1", "ref", "e0", "e1"]:
-            dir_path = Path(f"{base_path}/{split}/custom/{subdir}")
+            dir_path = split_dir / subdir
             dir_path.mkdir(parents=True, exist_ok=True)
             print(f"Created directory: {dir_path}")
 
@@ -363,7 +370,7 @@ def prepare_dataset(src_base_path, dst_base_path, num_workers=None, max_images=N
 if __name__ == "__main__":
     # Define paths
     src_base_path = "/andromeda/personal/jdamerini/unbalanced_dataset_coco2017"
-    dst_base_path = "/andromeda/personal/jdamerini/LPIPS_dataset_coco2017"
+    dst_base_path = "../PerceptualSimilarity/LPIPS_dataset_coco2017/2afc"
     
     # For testing, uncomment the next line to process only a few images per split
     # max_images = 10
