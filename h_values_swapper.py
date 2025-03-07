@@ -1,8 +1,23 @@
 import json
 import random
+from pathlib import Path
 
 
-def process_dataset_random_swap(input_path, output_path):
+def process_dataset_random_swap(input_path, output_path, seed=42):
+    """
+    Process a dataset by randomly swapping quality scores for each image
+    
+    Args:
+        input_path: Path to input h_values json file
+        output_path: Path to output file with swapped values
+        seed: Random seed for reproducibility
+    
+    Returns:
+        Dictionary containing processed results
+    """
+    # Set random seed for this specific processing
+    random.seed(seed)
+    
     # Load original h_values
     with open(input_path, "r") as f:
         h_values = json.load(f)
@@ -38,7 +53,6 @@ def process_dataset_random_swap(input_path, output_path):
     swap_count = sum(1 for img in results.values() if img["swapped"])
     total = len(results)
 
-    print("\nProcessing complete:")
     print(f"Total images: {total}")
     print(f"Swapped images: {swap_count} ({swap_count / total * 100:.2f}%)")
     print(
@@ -48,16 +62,53 @@ def process_dataset_random_swap(input_path, output_path):
     return results
 
 
+def main():
+    """Process all splits with random swap"""
+    # Base directory containing the h_values files
+    base_dir = Path("error_scores_analysis/mapping/07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444")
+    
+    # Splits to process
+    splits = ["train", "val", "test"]
+    
+    # Set master random seed for reproducibility
+    master_seed = 42
+    random.seed(master_seed)
+    
+    # Process each split
+    for split in splits:
+        split_dir = base_dir / split
+        
+        # Skip if directory doesn't exist
+        if not split_dir.exists():
+            print(f"Directory not found for {split} split, skipping: {split_dir}")
+            continue
+            
+        input_path = split_dir / "h_values_v3.json"
+        # Skip if file doesn't exist
+        if not input_path.exists():
+            print(f"h_values file not found for {split} split, skipping: {input_path}")
+            continue
+            
+        output_path = split_dir / "h_values_with_swap_v3.json"
+        
+        print(f"\nProcessing {split} split...")
+        try:
+            # Use a different seed for each split, but derived from master_seed
+            split_seed = master_seed + hash(split) % 1000
+            results = process_dataset_random_swap(input_path, output_path, seed=split_seed)
+            
+            # Print example of one image
+            if results:
+                first_img = next(iter(results))
+                print(f"\nExample of processed image from {split} split:")
+                print(json.dumps({first_img: results[first_img]}, indent=2))
+                
+            print(f"Saved results to: {output_path}")
+        except Exception as e:
+            print(f"Error processing {split} split: {str(e)}")
+    
+    print("\nAll processing complete!")
+
+
 if __name__ == "__main__":
-    input_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_v3.json"
-    output_path = "error_scores_analysis/mapping/04_visual_genome_320p_qual_16_24_28_35_45_55/h_values_with_swap_v3.json"
-
-    # Set random seed for reproducibility
-    random.seed(42)
-
-    results = process_dataset_random_swap(input_path, output_path)
-
-    # Print example of one image before and after processing
-    print("\nExample of processed image:")
-    first_img = next(iter(results))
-    print(json.dumps({first_img: results[first_img]}, indent=4))
+    main()

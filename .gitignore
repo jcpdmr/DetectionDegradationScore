@@ -6,6 +6,7 @@ dataset/
 dataset_attention/
 unbalanced_dataset/
 balanced_dataset/
+balanced_dataset_coco2017/
 feature_extracted/
 wandb/
 checkpoints/
