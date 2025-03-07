@@ -6,7 +6,11 @@ import plotly.io as pio
 
 
 def create_calibration_curve(
-    path: str, json_file: str, with_errors: bool = False, n_bins: int = 40
+    path: str,
+    json_file: str,
+    with_errors: bool = False,
+    n_bins: int = 40,
+    max_value: float = 1.0,
 ) -> str:
     """
     Creates a calibration curve from JSON data and saves it as an HTML file.
@@ -14,6 +18,7 @@ def create_calibration_curve(
     Args:
         json_file: Path to the JSON file containing predictions and error scores.
         n_bins: Number of bins to divide the predictions into.
+        max_value: Maximum value for the x-axis.
 
     Returns:
         Path to the generated HTML file.
@@ -83,11 +88,10 @@ def create_calibration_curve(
 
     # Set layout
     fig.update_layout(
-        title="Calibration Curve with Error Bars",
         xaxis_title="Mean Predicted Distance",
-        yaxis_title="Fraction of Expected Error Score",
-        xaxis=dict(range=[0, 1], dtick=0.2, minor=dict(dtick=0.05)),
-        yaxis=dict(range=[0, 1], dtick=0.2, minor=dict(dtick=0.05)),
+        yaxis_title="Mean Error Score",
+        xaxis=dict(range=[0, max_value], dtick=0.2, minor=dict(dtick=0.05)),
+        yaxis=dict(range=[0, max_value], dtick=0.2, minor=dict(dtick=0.05)),
     )
 
     # Save to HTML and PNG
@@ -103,11 +107,15 @@ def create_calibration_curve(
 
 
 if __name__ == "__main__":
-    ATTEMPT = 26
-    CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_06_visgen_coco17tr_openimagev7traine_320p_qual_20_24_28_32_36_40_50_smooth_2_subsam_444"
+    ATTEMPT = 28
+    CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     JSON_FILE = "test_predictions.json"
     WITH_ERRORS = False
+    MAX_VALUE = 0.8
     html_file_path = create_calibration_curve(
-        path=CHECKPOINT_DIR, json_file=JSON_FILE, with_errors=WITH_ERRORS
+        path=CHECKPOINT_DIR,
+        json_file=JSON_FILE,
+        with_errors=WITH_ERRORS,
+        max_value=MAX_VALUE,
     )
     print(f"Calibration curve saved, use error bars: {WITH_ERRORS}")
