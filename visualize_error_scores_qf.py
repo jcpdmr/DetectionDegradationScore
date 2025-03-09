@@ -56,14 +56,25 @@ class CompressionAnalyzer:
 
         # Update x-axis to show actual QF values as labels
         fig_mean.update_layout(
-            title="Mean Degradation Curve",
             xaxis=dict(
                 title="Quality Factor",
                 tickmode="array",
                 ticktext=self.quality_factors,
                 tickvals=list(range(len(self.quality_factors))),
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
             ),
-            yaxis=dict(title="Error Score"),
+            yaxis=dict(
+                title="Detection Degradation Score",
+                gridcolor="lightgray",
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
+            ),
+            plot_bgcolor="white",
             height=600,
             width=800,
         )
@@ -88,7 +99,6 @@ class CompressionAnalyzer:
         )
 
         fig_box.update_layout(
-            title="Error Score Distribution",
             xaxis=dict(
                 title="Quality Factor",
                 tickmode="array",
@@ -96,8 +106,20 @@ class CompressionAnalyzer:
                 tickvals=list(
                     range(len(self.quality_factors))
                 ),  # Use equispaced positions
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
             ),
-            yaxis=dict(title="Error Score"),
+            yaxis=dict(
+                title="Detection Degradation Score",
+                gridcolor="lightgray",
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
+            ),
+            plot_bgcolor="white",
             height=600,
             width=800,
         )
@@ -119,10 +141,9 @@ class CompressionAnalyzer:
             width=1,
         )
 
-        plt.title("Violin Plot of Error Scores")
         plt.ylim(0, 1)
         plt.xlabel("Quality Factor")
-        plt.ylabel("Error Score")
+        plt.ylabel("Detection Degradation Score")
         plt.grid(True, alpha=0.3)
 
         # Save plot
@@ -146,18 +167,31 @@ class CompressionAnalyzer:
                 y=[ones_count[qf] for qf in self.quality_factors],
                 text=[ones_count[qf] for qf in self.quality_factors],
                 textposition="auto",
+                opacity=0.9,
             )
         )
 
         fig_abs.update_layout(
-            title="Number of Error Score close to 1 (e > 0.95) per Quality Factor",
+            # title="Number of Error Score close to 1 (e > 0.95) per Quality Factor",
             xaxis=dict(
                 title="Quality Factor",
                 tickmode="array",
                 ticktext=self.quality_factors,
                 tickvals=list(range(len(self.quality_factors))),
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
             ),
-            yaxis=dict(title="Count"),
+            yaxis=dict(
+                title="Count",
+                gridcolor="lightgray",
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
+            ),
+            plot_bgcolor="white",
             height=600,
             width=800,
         )
@@ -176,18 +210,31 @@ class CompressionAnalyzer:
                 y=percentages,
                 text=[f"{p:.1f}%" for p in percentages],
                 textposition="auto",
+                opacity=0.9,
             )
         )
 
         fig_perc.update_layout(
-            title="Percentage of Error Score close to 1 (e > 0.95) per Quality Factor",
+            # title="Percentage of Error Score close to 1 (e > 0.95) per Quality Factor",
             xaxis=dict(
                 title="Quality Factor",
                 tickmode="array",
                 ticktext=self.quality_factors,
                 tickvals=list(range(len(self.quality_factors))),
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
             ),
-            yaxis=dict(title="Percentage"),
+            yaxis=dict(
+                title="Percentage",
+                gridcolor="lightgray",
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
+            ),
+            plot_bgcolor="white",
             height=600,
             width=800,
         )
@@ -215,18 +262,31 @@ class CompressionAnalyzer:
                 y=percentages,
                 text=[f"{p:.1f}%" for p in percentages],
                 textposition="auto",
+                opacity=0.9,
             )
         )
 
         fig_perc.update_layout(
-            title="Percentage of Error Score close to 0 (e < 0.05) per Quality Factor",
+            # title="Percentage of Error Score close to 0 (e < 0.05) per Quality Factor",
             xaxis=dict(
                 title="Quality Factor",
                 tickmode="array",
                 ticktext=self.quality_factors,
                 tickvals=list(range(len(self.quality_factors))),
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
             ),
-            yaxis=dict(title="Percentage"),
+            yaxis=dict(
+                title="Percentage",
+                gridcolor="lightgray",
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
+            ),
+            plot_bgcolor="white",
             height=600,
             width=800,
         )
@@ -277,27 +337,27 @@ def main():
     BASE_PATH = Path("error_scores_analysis/mapping")
     ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     SPLITS = ["train", "val", "test"]  # Process all splits
-    
+
     for split in SPLITS:
-        print(f"\n\n{'='*50}")
+        print(f"\n\n{'=' * 50}")
         print(f"Visualizing error-QF for {split.upper()} split")
-        print(f"{'='*50}\n")
-        
+        print(f"{'=' * 50}\n")
+
         OUTPUT_DIR = BASE_PATH / ATTEMPT / split
         JSON_PATH = OUTPUT_DIR / "error_scores.json"
-        
+
         if not JSON_PATH.exists():
             print(f"Warning: No error scores found for {split} split at {JSON_PATH}")
             continue
-        
+
         print(f"Loading error scores from: {JSON_PATH}")
-        
+
         # Initialize analyzer for this split
         analyzer = CompressionAnalyzer(JSON_PATH)
-        
+
         # Generate plots
         analyzer.plot_degradation_analysis(OUTPUT_DIR)
-        
+
         # # Get robust and sensitive images
         # robust_images, sensitive_images = analyzer.analyze_image_robustness()
         # # Save image lists
@@ -305,14 +365,14 @@ def main():
         #     f.write("\n".join(robust_images))
         # with open(OUTPUT_DIR / "sensitive_images.txt", "w") as f:
         #     f.write("\n".join(sensitive_images))
-        
+
         # Get random images
         random_images = analyzer.get_random_images(n_images=1000, seed=42)
-        
+
         # Save random images list
         with open(OUTPUT_DIR / "random_pick.txt", "w") as f:
             f.write("\n".join(random_images))
-        
+
         print(f"Analysis complete for {split} split")
         print(f"Graphs and results saved to {OUTPUT_DIR}")
 
