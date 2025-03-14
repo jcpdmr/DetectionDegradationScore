@@ -143,16 +143,16 @@ def predict_test_set(
 
 def main():
     # Configuration
-    GPU_ID = 1
+    GPU_ID = 2
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
-    ATTEMPT = 35
+    ATTEMPT = 36
     DIR = "40bins_point8_07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     TRIAL = f"attempt{ATTEMPT}_{DIR}"
     MODEL_PATH = f"checkpoints/{TRIAL}/best_model.pt"
     IMGS_ROOT = "balanced_dataset_coco2017"
     ERROR_SCORES_ROOT = "balanced_dataset_coco2017"
     OUTPUT_PATH = f"checkpoints/{TRIAL}/test_predictions.json"
-    BACKBONE = Backbone.YOLO_V11_M
+    BACKBONE = Backbone.EFFICIENTNET_V2_M
 
     predict_test_set(
         model_path=MODEL_PATH,
