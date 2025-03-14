@@ -43,9 +43,9 @@ class AttentionWeightedChannelReductionBlock(nn.Module):
 
 
 class SimpleBottleneckBlock(nn.Module):
-    def __init__(self, channels, expansion_factor=1.5):
+    def __init__(self, channels, reduction_factor=2):
         super().__init__()
-        hidden_channels = int(channels * expansion_factor)
+        hidden_channels = channels // reduction_factor
 
         self.conv1 = nn.Sequential(
             nn.Conv2d(channels, hidden_channels, 1),
@@ -138,38 +138,29 @@ class MultiFeatureQualityModel(nn.Module):
         # Final channel reduction after concatenating layer features
         self.final_channel_reducer = nn.Sequential(
             nn.Conv2d(
-                sum(self._get_pooled_feature_dims(feature_channels)) * 4,
-                256,
+                sum(self._get_pooled_feature_dims(feature_channels)) * 1,
+                96,
                 kernel_size=1,
-            ),  # Multiply by 4 to account for (2, 2) pooling
-            nn.BatchNorm2d(256),
+            ),  # Multiply by 1 to account for (1, 1) pooling
+            nn.BatchNorm2d(96),
             nn.ReLU(inplace=True),
         )
         # Modified MLP predictor to use LightResidualMLPBlock
         self.mlp_predictor = nn.Sequential(
-            LightResidualMLPBlock(hidden_dim=256),
-            LightResidualMLPBlock(hidden_dim=256),
-            LightResidualMLPBlock(hidden_dim=256),
-            LightResidualMLPBlock(hidden_dim=256),
-            nn.Linear(256, 1),  # Input dim matches hidden_dim of LightResidualMLPBlock
+            LightResidualMLPBlock(hidden_dim=96),
+            LightResidualMLPBlock(hidden_dim=96),
+            nn.Linear(96, 1),  # Input dim matches hidden_dim of LightResidualMLPBlock
             nn.Sigmoid(),
         )
 
     def _make_layer_processor(self, feature_channels):
-        """Creates a layer processor module with faster channel reduction (4x, 2x, 2x) and attention-weighted reduction."""
+        """Creates a layer processor module with ChannelReductionBlock and SimpleBottleneckBlock."""
         return nn.Sequential(
-            AttentionWeightedChannelReductionBlock(
-                in_channels=feature_channels * 2, reduction_factor=4
-            ),
-            SimpleBottleneckBlock(channels=feature_channels // 2),
-            AttentionWeightedChannelReductionBlock(
-                in_channels=feature_channels // 2, reduction_factor=2
-            ),
-            SimpleBottleneckBlock(channels=feature_channels // 4),
-            AttentionWeightedChannelReductionBlock(
-                in_channels=feature_channels // 4, reduction_factor=2
-            ),
-            SimpleBottleneckBlock(channels=feature_channels // 8),
+                    ChannelReductionBlock(
+                        in_channels=feature_channels * 2, reduction_factor=16
+                    ),
+                    SimpleBottleneckBlock(channels=feature_channels // 8),
+                    SimpleBottleneckBlock(channels=feature_channels // 8),
         )
 
     def _get_pooled_feature_dims(self, layer_channels: List[int]) -> List[int]:
@@ -204,17 +195,17 @@ class MultiFeatureQualityModel(nn.Module):
 
             # 4. Global Max Spatial Pooling (directly to 1x1)
             pooled_features = F.adaptive_avg_pool2d(
-                processed_features, output_size=(2, 2)
-            )  # [B, C_i/8, 2, 2]
+                processed_features, output_size=(1, 1)
+            )  # [B, C_i/8, 1, 1]
 
             # 5. Flatten
-            flattened_features = torch.flatten(pooled_features, 1)  # [B, C_i/8 * 2 * 2]
+            flattened_features = torch.flatten(pooled_features, 1)  # [B, C_i/8 * 1 * 1]
             layer_feature_vectors.append(flattened_features)
 
         # Concatenate feature vectors from all layers
         combined_features_vector = torch.cat(
             layer_feature_vectors, dim=1
-        )  # [B, sum(C_i/8 * 2 * 2)]
+        )  # [B, sum(C_i/8 * 1 * 1)]
 
         # Optional final channel reduction with 1x1 conv
         reduced_features = (
@@ -223,7 +214,7 @@ class MultiFeatureQualityModel(nn.Module):
             )
             .squeeze(-1)
             .squeeze(-1)
-        )  # [B, 256]
+        )  # [B, 96]
 
         # MLP Predictor
         distance_prediction = self.mlp_predictor(reduced_features).squeeze(-1)  # [B]
