@@ -88,10 +88,27 @@ def create_calibration_curve(
 
     # Set layout
     fig.update_layout(
-        xaxis_title="Mean Predicted Distance",
-        yaxis_title="Mean Error Score",
-        xaxis=dict(range=[0, max_value], dtick=0.2, minor=dict(dtick=0.05)),
-        yaxis=dict(range=[0, max_value], dtick=0.2, minor=dict(dtick=0.05)),
+        xaxis_title="Binned Mean Predicted DDS",
+        yaxis_title="Binned Mean Target DDS",
+        xaxis=dict(range=[0, max_value],
+                dtick=0.2,
+                minor=dict(dtick=0.05), 
+                gridcolor="lightgray",
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
+                ),
+        yaxis=dict(range=[0, max_value],
+                dtick=0.2,
+                minor=dict(dtick=0.05), 
+                gridcolor="lightgray",
+                showline=True,
+                linewidth=1,
+                linecolor="black",
+                mirror=True,
+                ),
+        plot_bgcolor="white",
     )
 
     # Save to HTML and PNG
