@@ -30,8 +30,8 @@ class Backbone(Enum):
                 channels=[40, 112],
             ),
             Backbone.EFFICIENTNET_V2_M: LayerConfig(
-                indices=[6, 7],
-                channels=[304, 512],
+                indices=[7],
+                channels=[512],
             ),
         }
         return configs[self]

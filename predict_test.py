@@ -143,9 +143,9 @@ def predict_test_set(
 
 def main():
     # Configuration
-    GPU_ID = 2
+    GPU_ID = 0
     DEVICE = torch.device(f"cuda:{GPU_ID}" if torch.cuda.is_available() else "cpu")
-    ATTEMPT = 36
+    ATTEMPT = 37
     DIR = "40bins_point8_07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     TRIAL = f"attempt{ATTEMPT}_{DIR}"
     MODEL_PATH = f"checkpoints/{TRIAL}/best_model.pt"
