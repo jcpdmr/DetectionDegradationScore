@@ -148,7 +148,7 @@ class MultiFeatureQualityModel(nn.Module):
         # Modified MLP predictor to use LightResidualMLPBlock
         self.mlp_predictor = nn.Sequential(
             LightResidualMLPBlock(hidden_dim=96),
-            # LightResidualMLPBlock(hidden_dim=96),
+            LightResidualMLPBlock(hidden_dim=96),
             nn.Linear(96, 1),  # Input dim matches hidden_dim of LightResidualMLPBlock
             nn.Sigmoid(),
         )

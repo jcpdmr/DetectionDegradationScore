@@ -1,0 +1,425 @@
+{
+    "benchmark_statistics": {
+        "total_images_processed": 36527,
+        "total_detector_inference_time_seconds": 258.7188763618469,
+        "total_matching_time_seconds": 246.40497493743896,
+        "total_dds_time_seconds": 505.1242368221283,
+        "average_detector_time_per_image_seconds": 0.007082948951784897,
+        "average_matching_time_per_image_seconds": 0.00674583116427407,
+        "average_dds_time_per_image_seconds": 0.013828790670521212,
+        "detector_inference_fps": 141.184132034158,
+        "matching_fps": 148.23970177255563,
+        "dds_total_fps": 72.3129031182529,
+        "detector_model": "yolo11m.pt",
+        "device": "cuda:0",
+        "batch_size": 128,
+        "compression_level": 40,
+        "baseline_memory_mib": 12.0,
+        "detector_memory_overhead_mib": 244.0,
+        "detection_memory_usage_mib": 0.0,
+        "peak_memory_usage_mib": 3562.0,
+        "final_memory_usage_mib": 3562.0
+    },
+    "dds_scores": [
+        {
+            "filename": "000000019646.jpg",
+            "error_score": 0.4676584005355835
+        },
+        {
+            "filename": "000000019648.jpg",
+            "error_score": 0.6169863939285278
+        },
+        {
+            "filename": "000000019650.jpg",
+            "error_score": 0.19027060270309448
+        },
+        {
+            "filename": "000000019661.jpg",
+            "error_score": 0.48848336935043335
+        },
+        {
+            "filename": "000000019676.jpg",
+            "error_score": 0.4806669354438782
+        },
+        {
+            "filename": "000000019792.jpg",
+            "error_score": 0.7289680242538452
+        },
+        {
+            "filename": "000000019808.jpg",
+            "error_score": 0.611832857131958
+        },
+        {
+            "filename": "000000019847.jpg",
+            "error_score": 0.3255000114440918
+        },
+        {
+            "filename": "000000019853.jpg",
+            "error_score": 0.2105068564414978
+        },
+        {
+            "filename": "000000019910.jpg",
+            "error_score": 0.038037776947021484
+        },
+        {
+            "filename": "000000019988.jpg",
+            "error_score": 0.568385124206543
+        },
+        {
+            "filename": "000000019997.jpg",
+            "error_score": 0.5186641216278076
+        },
+        {
+            "filename": "000000020009.jpg",
+            "error_score": 0.5509799122810364
+        },
+        {
+            "filename": "000000020020.jpg",
+            "error_score": 0.6276881694793701
+        },
+        {
+            "filename": "000000020040.jpg",
+            "error_score": 0.6908131241798401
+        },
+        {
+            "filename": "000000020048.jpg",
+            "error_score": 0.37858057022094727
+        },
+        {
+            "filename": "000000020061.jpg",
+            "error_score": 0.20153015851974487
+        },
+        {
+            "filename": "000000020067.jpg",
+            "error_score": 0.05503565073013306
+        },
+        {
+            "filename": "000000020081.jpg",
+            "error_score": 0.41329246759414673
+        },
+        {
+            "filename": "000000020091.jpg",
+            "error_score": 0.24783289432525635
+        },
+        {
+            "filename": "000000020099.jpg",
+            "error_score": 0.2167646884918213
+        },
+        {
+            "filename": "000000020143.jpg",
+            "error_score": 0.1546826958656311
+        },
+        {
+            "filename": "000000020169.jpg",
+            "error_score": 0.7593457698822021
+        },
+        {
+            "filename": "000000020170.jpg",
+            "error_score": 0.7519936561584473
+        },
+        {
+            "filename": "000000020190.jpg",
+            "error_score": 0.7238324880599976
+        },
+        {
+            "filename": "000000020197.jpg",
+            "error_score": 0.15080046653747559
+        },
+        {
+            "filename": "000000020209.jpg",
+            "error_score": 0.5757534503936768
+        },
+        {
+            "filename": "000000020228.jpg",
+            "error_score": 0.7801256775856018
+        },
+        {
+            "filename": "000000020269.jpg",
+            "error_score": 0.41347116231918335
+        },
+        {
+            "filename": "000000020272.jpg",
+            "error_score": 0.207206130027771
+        },
+        {
+            "filename": "000000020274.jpg",
+            "error_score": 0.5326873660087585
+        },
+        {
+            "filename": "000000020288.jpg",
+            "error_score": 0.6493562459945679
+        },
+        {
+            "filename": "000000020290.jpg",
+            "error_score": 0.3498993515968323
+        },
+        {
+            "filename": "000000020314.jpg",
+            "error_score": 0.13103973865509033
+        },
+        {
+            "filename": "000000020331.jpg",
+            "error_score": 0.5103225708007812
+        },
+        {
+            "filename": "000000020353.jpg",
+            "error_score": 0.5110263228416443
+        },
+        {
+            "filename": "000000020368.jpg",
+            "error_score": 0.3346804976463318
+        },
+        {
+            "filename": "000000020378.jpg",
+            "error_score": 0.4985072612762451
+        },
+        {
+            "filename": "000000020386.jpg",
+            "error_score": 0.22638553380966187
+        },
+        {
+            "filename": "000000020393.jpg",
+            "error_score": 0.11348044872283936
+        },
+        {
+            "filename": "000000020411.jpg",
+            "error_score": 0.5050264596939087
+        },
+        {
+            "filename": "000000020430.jpg",
+            "error_score": 0.6218088865280151
+        },
+        {
+            "filename": "000000020435.jpg",
+            "error_score": 0.30941200256347656
+        },
+        {
+            "filename": "000000020448.jpg",
+            "error_score": 0.7080968618392944
+        },
+        {
+            "filename": "000000020496.jpg",
+            "error_score": 0.3998015522956848
+        },
+        {
+            "filename": "000000020503.jpg",
+            "error_score": 0.23841673135757446
+        },
+        {
+            "filename": "000000020530.jpg",
+            "error_score": 0.0
+        },
+        {
+            "filename": "000000020548.jpg",
+            "error_score": 0.7256535291671753
+        },
+        {
+            "filename": "000000020559.jpg",
+            "error_score": 0.07595735788345337
+        },
+        {
+            "filename": "000000020594.jpg",
+            "error_score": 0.6799044609069824
+        },
+        {
+            "filename": "000000020602.jpg",
+            "error_score": 0.7235701680183411
+        },
+        {
+            "filename": "000000020607.jpg",
+            "error_score": 0.18453311920166016
+        },
+        {
+            "filename": "000000020656.jpg",
+            "error_score": 0.20204609632492065
+        },
+        {
+            "filename": "000000020674.jpg",
+            "error_score": 0.05598419904708862
+        },
+        {
+            "filename": "000000020699.jpg",
+            "error_score": 0.5853286981582642
+        },
+        {
+            "filename": "000000020717.jpg",
+            "error_score": 0.6984635591506958
+        },
+        {
+            "filename": "000000020763.jpg",
+            "error_score": 0.6518293619155884
+        },
+        {
+            "filename": "000000020771.jpg",
+            "error_score": 0.08829164505004883
+        },
+        {
+            "filename": "000000020776.jpg",
+            "error_score": 0.17801672220230103
+        },
+        {
+            "filename": "000000020789.jpg",
+            "error_score": 0.2067716121673584
+        },
+        {
+            "filename": "000000020793.jpg",
+            "error_score": 0.37322676181793213
+        },
+        {
+            "filename": "000000020798.jpg",
+            "error_score": 0.08276975154876709
+        },
+        {
+            "filename": "000000020806.jpg",
+            "error_score": 0.20484018325805664
+        },
+        {
+            "filename": "000000020840.jpg",
+            "error_score": 0.13440710306167603
+        },
+        {
+            "filename": "000000020855.jpg",
+            "error_score": 0.4752735495567322
+        },
+        {
+            "filename": "000000020868.jpg",
+            "error_score": 0.12363678216934204
+        },
+        {
+            "filename": "000000020872.jpg",
+            "error_score": 0.12955552339553833
+        },
+        {
+            "filename": "000000020881.jpg",
+            "error_score": 0.5489692687988281
+        },
+        {
+            "filename": "000000020891.jpg",
+            "error_score": 0.7619832158088684
+        },
+        {
+            "filename": "000000020892.jpg",
+            "error_score": 0.40836066007614136
+        },
+        {
+            "filename": "000000020921.jpg",
+            "error_score": 0.5080164670944214
+        },
+        {
+            "filename": "000000020931.jpg",
+            "error_score": 0.768865704536438
+        },
+        {
+            "filename": "000000020953.jpg",
+            "error_score": 0.11602401733398438
+        },
+        {
+            "filename": "000000020970.jpg",
+            "error_score": 0.37274599075317383
+        },
+        {
+            "filename": "000000020988.jpg",
+            "error_score": 0.6936656832695007
+        },
+        {
+            "filename": "000000020998.jpg",
+            "error_score": 0.3122864365577698
+        },
+        {
+            "filename": "000000021016.jpg",
+            "error_score": 0.46232467889785767
+        },
+        {
+            "filename": "000000021018.jpg",
+            "error_score": 0.6898077726364136
+        },
+        {
+            "filename": "000000021027.jpg",
+            "error_score": 0.7786228656768799
+        },
+        {
+            "filename": "000000021064.jpg",
+            "error_score": 0.3350564241409302
+        },
+        {
+            "filename": "000000021086.jpg",
+            "error_score": 0.21613585948944092
+        },
+        {
+            "filename": "000000021101.jpg",
+            "error_score": 0.5488558411598206
+        },
+        {
+            "filename": "000000021114.jpg",
+            "error_score": 0.7255493998527527
+        },
+        {
+            "filename": "000000021118.jpg",
+            "error_score": 0.7746554017066956
+        },
+        {
+            "filename": "000000021134.jpg",
+            "error_score": 0.06948399543762207
+        },
+        {
+            "filename": "000000021146.jpg",
+            "error_score": 0.6564096212387085
+        },
+        {
+            "filename": "000000021159.jpg",
+            "error_score": 0.6515859365463257
+        },
+        {
+            "filename": "000000021172.jpg",
+            "error_score": 0.44972074031829834
+        },
+        {
+            "filename": "000000021189.jpg",
+            "error_score": 0.30581408739089966
+        },
+        {
+            "filename": "000000021200.jpg",
+            "error_score": 0.7343407869338989
+        },
+        {
+            "filename": "000000021203.jpg",
+            "error_score": 0.6637140512466431
+        },
+        {
+            "filename": "000000021225.jpg",
+            "error_score": 0.6623214483261108
+        },
+        {
+            "filename": "000000021230.jpg",
+            "error_score": 0.30674242973327637
+        },
+        {
+            "filename": "000000021239.jpg",
+            "error_score": 0.7102802991867065
+        },
+        {
+            "filename": "000000021245.jpg",
+            "error_score": 0.6519449949264526
+        },
+        {
+            "filename": "000000021274.jpg",
+            "error_score": 0.23274719715118408
+        },
+        {
+            "filename": "000000021277.jpg",
+            "error_score": 0.4665068984031677
+        },
+        {
+            "filename": "000000021295.jpg",
+            "error_score": 0.33675479888916016
+        },
+        {
+            "filename": "000000021311.jpg",
+            "error_score": 0.02914893627166748
+        },
+        {
+            "filename": "000000021341.jpg",
+            "error_score": 0.4317625164985657
+        }
+    ]
+}

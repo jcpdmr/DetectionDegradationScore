@@ -428,12 +428,12 @@ def main():
     BATCH_SIZE = 128
     NUM_EPOCHS = 50
     LEARNING_RATE = 1e-3
-    ATTEMPT = 37
+    ATTEMPT = 38
     DIR = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
     CHECKPOINT_DIR = f"checkpoints/attempt{ATTEMPT}_40bins_point8_{DIR}"
     TRY_RUN = False
     USE_ONLINE_WANDB = True
-    BACKBONE = Backbone.EFFICIENTNET_V2_M
+    BACKBONE = Backbone.YOLO_V11_M
 
     from dataloader import create_dataloaders
 

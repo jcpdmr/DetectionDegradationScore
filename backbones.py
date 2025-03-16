@@ -18,8 +18,8 @@ class Backbone(Enum):
         """Get the layer configuration for the backbone."""
         configs = {
             Backbone.YOLO_V11_M: LayerConfig(
-                indices=[9, 10],
-                channels=[512, 512],
+                indices=[9],
+                channels=[512],
             ),
             Backbone.VGG_16: LayerConfig(
                 indices=[23, 30],
@@ -30,8 +30,8 @@ class Backbone(Enum):
                 channels=[40, 112],
             ),
             Backbone.EFFICIENTNET_V2_M: LayerConfig(
-                indices=[7],
-                channels=[512],
+                indices=[6, 7],
+                channels=[304, 512],
             ),
         }
         return configs[self]
