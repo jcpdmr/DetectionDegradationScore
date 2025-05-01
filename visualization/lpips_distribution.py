@@ -1,17 +1,15 @@
 import os
 import torch
 import lpips
-import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
 import torchvision.transforms as transforms
 from tqdm import tqdm
-from typing import Dict, List, Tuple
+from typing import List
 import json
 import random
-from pathlib import Path
 
 
 def preprocess_image(img_path: str, transform) -> torch.Tensor:

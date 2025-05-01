@@ -1,8 +1,6 @@
 import os
 import cv2
-import numpy as np
 import matplotlib.pyplot as plt
-import torch
 import sys
 import random
 from pathlib import Path
@@ -12,7 +10,7 @@ from tqdm import tqdm
 # Import for DDS calculation
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
-    from score_metrics import match_predictions
+    from dds_metric import match_predictions
 except ImportError:
     print("Warning: Cannot import match_predictions. DDS calculation may fail.")
 
