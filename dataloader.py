@@ -12,7 +12,7 @@ from backbones import Backbone
 
 class ImagePairDataset(Dataset):
     """
-    Dataset for loading pairs of original and compressed images, with optional error scores and preprocessing.
+    Dataset for loading pairs of original and compressed images, with optional dd scores and preprocessing.
     """
 
     def __init__(
@@ -28,7 +28,7 @@ class ImagePairDataset(Dataset):
         Args:
             root_path: Root directory containing the dataset
             split: Dataset split ('train', 'val', 'test')
-            scores_root: Optional root directory containing error scores
+            scores_root: Optional root directory containing dd scores
             preprocess: Optional preprocessing transform to apply to images
         """
         if split not in ["train", "val", "test"]:
@@ -42,7 +42,7 @@ class ImagePairDataset(Dataset):
         # Setup scores if provided
         self.scores = None
         if scores_root:
-            scores_path = Path(scores_root) / split / "error_scores.json"
+            scores_path = Path(scores_root) / split / "ddscores.json"
             if not scores_path.exists():
                 raise RuntimeError(f"Scores file not found: {scores_path}")
             with open(scores_path) as f:
@@ -89,7 +89,7 @@ class ImagePairDataset(Dataset):
             - gt: Ground truth image tensor [3, H, W] (preprocessed if preprocess is provided)
             - compressed: Compressed image tensor [3, H, W] (preprocessed if preprocess is provided)
             - name: Image filename
-            - score: Error score [1] (if scores provided)
+            - score: DDS [1] (if scores provided)
         """
         img_name = self.image_names[idx]
 
@@ -207,11 +207,11 @@ def create_dataloaders(
     dataset_root: str,
     batch_size: int,
     backbone_name: Backbone,
-    error_scores_root: str = None,
+    ddscores_root: str = None,
     num_workers: int = 4,
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
-    Create dataloaders for image pairs with optional error scores and backbone-specific preprocessing.
+    Create dataloaders for image pairs with optional dd scores and backbone-specific preprocessing.
     """
     loaders = {}
     imagenet_mean = [0.485, 0.456, 0.406]
@@ -240,7 +240,7 @@ def create_dataloaders(
 
     for split in ["train", "val", "test"]:
         dataset = ImagePairDataset(
-            dataset_root, split, error_scores_root, preprocess=preprocess_transform
+            dataset_root, split, ddscores_root, preprocess=preprocess_transform
         )  # Pass preprocess transform to dataset
 
         loaders[split] = DataLoader(

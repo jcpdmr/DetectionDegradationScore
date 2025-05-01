@@ -2,7 +2,6 @@ import json
 import numpy as np
 from collections import defaultdict
 from typing import Dict
-import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -10,7 +9,7 @@ from pathlib import Path
 class DatasetBalancer:
     def __init__(
         self,
-        error_scores_path: str,
+        ddscores_path: str,
         n_bins: int = 40,
         max_score: float = 0.8,
     ):
@@ -18,34 +17,34 @@ class DatasetBalancer:
         Initialize the dataset balancer.
 
         Args:
-            error_scores_path: Path to the JSON file containing error scores
-            n_bins: Number of bins to divide the error scores into
-            max_score: Maximum error score to consider
+            ddscores_path: Path to the JSON file containing Detection Degradation scores
+            n_bins: Number of bins to divide the dd scores into
+            max_score: Maximum dd score to consider
         """
         self.n_bins = n_bins
         self.max_score = max_score
         # Create bin edges from 0 to max_score
         self.bin_edges = np.linspace(0, max_score, n_bins + 1)
 
-        # Load and process error scores
-        with open(error_scores_path, "r") as f:
-            error_scores_full = json.load(f)
+        # Load and process dd scores
+        with open(ddscores_path, "r") as f:
+            ddscores_full = json.load(f)
 
         # Filter out scores above max_score
-        self.error_scores = {}
-        for img_id, scores in error_scores_full.items():
+        self.ddscores = {}
+        for img_id, scores in ddscores_full.items():
             valid_scores = {
                 quality: score
                 for quality, score in scores.items()
                 if score <= self.max_score
             }
             if valid_scores:  # Only include images that have valid scores
-                self.error_scores[img_id] = valid_scores
+                self.ddscores[img_id] = valid_scores
 
         # Dataset statistics
-        self.total_images = len(self.error_scores)
+        self.total_images = len(self.ddscores)
         self.scores_per_image = {
-            img_id: len(scores) for img_id, scores in self.error_scores.items()
+            img_id: len(scores) for img_id, scores in self.ddscores.items()
         }
         self.total_scores = sum(self.scores_per_image.values())
 
@@ -65,7 +64,7 @@ class DatasetBalancer:
         """
         # Count how many images can potentially contribute to each bin
         images_per_bin = defaultdict(set)
-        for img_id, scores in self.error_scores.items():
+        for img_id, scores in self.ddscores.items():
             for score in scores.values():
                 bin_idx = np.digitize(score, self.bin_edges) - 1
                 if bin_idx < self.n_bins:
@@ -92,7 +91,7 @@ class DatasetBalancer:
         """
         availability = defaultdict(list)
 
-        for img_id, scores in self.error_scores.items():
+        for img_id, scores in self.ddscores.items():
             for quality, score in scores.items():
                 bin_idx = np.digitize(score, self.bin_edges) - 1
                 if bin_idx < self.n_bins:  # Ensure we don't exceed bin range
@@ -101,7 +100,7 @@ class DatasetBalancer:
                     )
 
         return availability
-    
+
     def _update_final_stats(self, selected_items: Dict, bin_counts: Dict):
         """
         Update final statistics after dataset creation.
@@ -262,39 +261,13 @@ class DatasetBalancer:
         self._update_final_stats(selected_items, bin_counts)
         return selected_items
 
-    def analyze_distribution(self, selected_items: Dict) -> pd.DataFrame:
-        """
-        Analyze the distribution of selected items across bins.
-        """
-        bin_counts = defaultdict(int)
-        for item in selected_items.values():
-            bin_counts[item["bin"]] += 1
-
-        # Create DataFrame for analysis
-        df = pd.DataFrame(
-            {
-                "bin": range(self.n_bins),
-                "count": [bin_counts[i] for i in range(self.n_bins)],
-                "range": [
-                    f"{self.bin_edges[i]:.2f}-{self.bin_edges[i + 1]:.2f}"
-                    for i in range(self.n_bins)
-                ],
-            }
-        )
-
-        # Add statistics
-        df["percentage"] = (df["count"] / df["count"].sum() * 100).round(2)
-        df["diff_from_mean"] = (df["count"] - df["count"].mean()).round(2)
-
-        return df
-
     def print_statistics(self):
         """
         Print comprehensive statistics about the dataset and balancing process.
         """
         print("\n=== Initial Dataset Statistics ===")
         print(f"Total images: {self.stats['initial_stats']['total_images']}")
-        print(f"Total error scores: {self.stats['initial_stats']['total_scores']}")
+        print(f"Total dd scores: {self.stats['initial_stats']['total_scores']}")
         print(
             f"Average scores per image: {self.stats['initial_stats']['avg_scores_per_image']:.2f}"
         )
@@ -432,38 +405,36 @@ if __name__ == "__main__":
     N_BINS = 40
     MAX_SCORE = 0.8
     ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
-    BASE_DIR = f"error_scores_analysis/mapping/{ATTEMPT}"
+    BASE_DIR = f"ddscores_analysis/mapping/{ATTEMPT}"
     SPLITS = ["train", "val", "test"]  # Process all splits
-    
+
     for split in SPLITS:
-        print(f"\n\n{'='*50}")
+        print(f"\n\n{'=' * 50}")
         print(f"Processing {split.upper()} dataset")
-        print(f"{'='*50}\n")
-        
+        print(f"{'=' * 50}\n")
+
         # Create output directory
         output_dir = Path(BASE_DIR) / split
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Define paths for this split
-        error_scores_path = Path(BASE_DIR) / split / "error_scores.json"
+        ddscores_path = Path(BASE_DIR) / split / "ddscores.json"
         output_json = output_dir / "balanced_dataset.json"
         output_img = output_dir / "balanced_dataset.png"
-        
-        if not error_scores_path.exists():
-            print(f"Warning: No error scores found for {split} split at {error_scores_path}")
+
+        if not ddscores_path.exists():
+            print(f"Warning: No dd scores found for {split} split at {ddscores_path}")
             continue
-            
-        print(f"Loading error scores from: {error_scores_path}")
-        
+
+        print(f"Loading dd scores from: {ddscores_path}")
+
         # Create balancer and process dataset
         balancer = DatasetBalancer(
-            error_scores_path=str(error_scores_path),
-            n_bins=N_BINS,
-            max_score=MAX_SCORE
+            ddscores_path=str(ddscores_path), n_bins=N_BINS, max_score=MAX_SCORE
         )
         selected_items = balancer.create_balanced_dataset()
         balancer.print_statistics()
-        
+
         # Save results
         with open(output_json, "w") as f:
             json.dump(
@@ -474,7 +445,7 @@ if __name__ == "__main__":
                 f,
                 indent=4,
             )
-        
+
         # Validate the dataset
         print(f"\nValidating {split} dataset...")
         results = validate_dataset(str(output_json), str(output_img), N_BINS, MAX_SCORE)

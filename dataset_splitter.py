@@ -223,7 +223,7 @@ class DatasetSplitter:
 
 
 class DatasetValidator:
-    """Validates the organized dataset and creates error scores files"""
+    """Validates the organized dataset and creates dd scores files"""
 
     def __init__(self, balanced_path: Path, split_info: Dict):
         self.balanced_path = balanced_path
@@ -255,15 +255,15 @@ class DatasetValidator:
 
         return missing_files
 
-    def create_error_scores(self, split: str):
-        """Create error_scores.json for a specific split"""
-        error_scores = {
+    def create_ddscores(self, split: str):
+        """Create ddscores.json for a specific split"""
+        ddscores = {
             img_name: info["score"] for img_name, info in self.split_info[split].items()
         }
 
-        output_file = self.balanced_path / split / "error_scores.json"
+        output_file = self.balanced_path / split / "ddscores.json"
         with open(output_file, "w") as f:
-            json.dump(error_scores, f, indent=4)
+            json.dump(ddscores, f, indent=4)
 
 
 class DatasetOrganizer:
@@ -281,7 +281,7 @@ class DatasetOrganizer:
     ):
         """
         Initialize the dataset organizer.
-        
+
         Args:
             balanced_files: Dictionary mapping split names to their balanced dataset files
             unbalanced_path: Path to the unbalanced dataset
@@ -300,8 +300,10 @@ class DatasetOrganizer:
             with open(file_path, "r") as f:
                 data = json.load(f)
                 self.split_info[split] = data.get("selected_items", {})
-                
-            print(f"Loaded {len(self.split_info[split])} items from {split} balanced dataset")
+
+            print(
+                f"Loaded {len(self.split_info[split])} items from {split} balanced dataset"
+            )
         return self.split_info
 
     def create_directory_structure(self):
@@ -320,10 +322,12 @@ class DatasetOrganizer:
                 path.mkdir(parents=True, exist_ok=True)
                 print(f"Created {path}")
 
-    def copy_image(self, img_name: str, quality: str, source_split: str, target_split: str):
+    def copy_image(
+        self, img_name: str, quality: str, source_split: str, target_split: str
+    ):
         """
         Copy both extracted and compressed versions of an image to their respective locations
-        
+
         Args:
             img_name: Image filename
             quality: JPEG quality value
@@ -366,49 +370,52 @@ class DatasetOrganizer:
 
         for target_split, items in self.split_info.items():
             print(f"Processing {target_split} split...")
-            
+
             for img_name, info in items.items():
                 # Use same split for source and target (train->train, val->val, test->test)
                 source_split = target_split
-                
-                success = self.copy_image(img_name, info["quality"], source_split, target_split)
+
+                success = self.copy_image(
+                    img_name, info["quality"], source_split, target_split
+                )
                 total_processed += 1
-                
+
                 if success:
                     success_count += 1
                 else:
                     fail_count += 1
 
                 if total_processed % 10000 == 0:
-                    print(f"Processed {total_processed} images ({success_count} successful, {fail_count} failed)")
+                    print(
+                        f"Processed {total_processed} images ({success_count} successful, {fail_count} failed)"
+                    )
 
         print(
             f"Dataset organization completed. Total: {total_processed}, Successful: {success_count}, Failed: {fail_count}"
         )
 
-        # Create error scores for each split
-        self.create_error_scores()
-        
-        print("Error scores created for all splits")
+        # Create dd scores for each split
+        self.create_ddscores()
 
-    def create_error_scores(self):
-        """Create error_scores.json for each split"""
+        print("DD scores created for all splits")
+
+    def create_ddscores(self):
+        """Create ddscores.json for each split"""
         for split, items in self.split_info.items():
-            error_scores = {
-                img_name: info["score"] for img_name, info in items.items()
-            }
+            ddscores = {img_name: info["score"] for img_name, info in items.items()}
 
-            output_file = self.balanced_path / split / "error_scores.json"
+            output_file = self.balanced_path / split / "ddscores.json"
             with open(output_file, "w") as f:
-                json.dump(error_scores, f, indent=4)
-                
-            print(f"Created error_scores.json for {split} with {len(error_scores)} items")
+                json.dump(ddscores, f, indent=4)
+
+            print(f"Created ddscores.json for {split} with {len(ddscores)} items")
 
 
 if __name__ == "__main__":
-
     ATTEMPT = "07_coco17complete_320p_qual_20_25_30_35_40_45_50_subsamp_444"
-    BASE_DIR = f"error_scores_analysis/mapping/{ATTEMPT}"
+    BASE_DIR = f"ddscores_analysis/mapping/{ATTEMPT}"
+    UNBALANCED_DIR = "/andromeda/personal/jdamerini/unbalanced_dataset_coco2017"
+    BALANCED_DIR = "balanced_dataset_coco2017"
 
     # OUTPUT_PATH = "split.json"
     # VAL_SPLIT = 0.05
@@ -431,8 +438,8 @@ if __name__ == "__main__":
             "val": f"{BASE_DIR}/val/balanced_dataset.json",
             "test": f"{BASE_DIR}/test/balanced_dataset.json",
         },
-        "unbalanced_path": "/andromeda/personal/jdamerini/unbalanced_dataset_coco2017",
-        "balanced_path": "balanced_dataset_coco2017",
+        "unbalanced_path": UNBALANCED_DIR,
+        "balanced_path": BALANCED_DIR,
         "clean_existing": True,
     }
 
