@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from tqdm import tqdm
 from dataloader import create_dataloaders
-from ddsrn import create_DDSRN_model
+from ddsrn import create_ddsrn_model
 from extractor import load_feature_extractor, FeatureExtractor
 import torch.nn.functional as F
 from scipy.stats import spearmanr
@@ -66,7 +66,7 @@ def predict_test_set(
     feature_channels = backbone_name.config.channels
 
     # Load model
-    model = create_DDSRN_model(
+    model = create_ddsrn_model(
         feature_channels=feature_channels,
         layer_indices=layer_indices,
     ).to(device)

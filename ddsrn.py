@@ -124,7 +124,7 @@ class ChannelReductionBlock(nn.Module):
         return self.reduce_conv(x)
 
 
-class DDSRN(nn.Module):
+class Ddsrn(nn.Module):
     """Detection Degradation Score Regression Network"""
 
     def __init__(self, feature_channels: List[int], layer_indices: List[int]):
@@ -222,9 +222,9 @@ class DDSRN(nn.Module):
         return distance_prediction
 
 
-def create_DDSRN_model(
+def create_ddsrn_model(
     feature_channels: List[int],
     layer_indices: List[int],
-) -> DDSRN:
+) -> Ddsrn:
     """Creates and initializes the DDSRN model"""
-    return DDSRN(feature_channels=feature_channels, layer_indices=layer_indices)
+    return Ddsrn(feature_channels=feature_channels, layer_indices=layer_indices)

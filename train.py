@@ -10,7 +10,7 @@ from typing import Dict, Optional
 import os
 from itertools import islice
 
-from ddsrn import create_DDSRN_model
+from ddsrn import create_ddsrn_model
 from extractor import load_feature_extractor, FeatureExtractor
 from backbones import Backbone
 from utils.bin_distribution_visualizer import BinDistributionVisualizer
@@ -75,7 +75,7 @@ class Trainer:
         ).to(device)
 
         # Initialize model
-        self.model = create_DDSRN_model(
+        self.model = create_ddsrn_model(
             feature_channels=feature_channels, layer_indices=layer_indices
         ).to(device)
 
