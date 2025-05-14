@@ -124,7 +124,7 @@ def match_predictions(
             "matches": matches,
             "num_gt": len(gt_boxes),
             "num_mod": len(mod_boxes),
-            "ddscore": calculate_DDS(matches, len(gt_boxes), len(mod_boxes)),
+            "ddscore": calculate_dds(matches, len(gt_boxes), len(mod_boxes)),
         }
 
         batch_matches.append(image_metrics)
@@ -152,7 +152,7 @@ def box_iou(boxes1: torch.Tensor, boxes2: torch.Tensor) -> torch.Tensor:
     return intersection / union
 
 
-def calculate_DDS(matches: List[Dict], num_gt: int, num_mod: int) -> float:
+def calculate_dds(matches: List[Dict], num_gt: int, num_mod: int) -> float:
     """
     Calculate Detection Degradation Score based on matches and predictions.
     Since matches are already filtered by class (following torchmetrics approach),

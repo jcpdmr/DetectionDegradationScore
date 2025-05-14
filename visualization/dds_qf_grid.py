@@ -56,7 +56,7 @@ def detect_and_draw(model, img):
     return annotated_img, results[0]
 
 
-def calculate_dds(gt_results, comp_results):
+def compute_dds(gt_results, comp_results):
     """Calculate Detection Degradation Score."""
     try:
         matches = match_predictions([gt_results], [comp_results])
@@ -144,7 +144,7 @@ def main():
                 comp_annotated, comp_results = detect_and_draw(model, comp_img)
 
                 # Calculate DDS
-                dds = calculate_dds(gt_results, comp_results)
+                dds = compute_dds(gt_results, comp_results)
 
                 # Determine position in the grid
                 if i < 4:  # First row: QF20, QF25, QF30, QF35

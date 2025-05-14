@@ -152,7 +152,7 @@ pip install ultralytics
 You can calculate the DDS metric directly for your own detection tasks:
 
 ```python
-from dds_metric import calculate_DDS
+from dds_metric import calculate_dds
 
 # Get predictions from your detector for both original and artifact-affected images
 gt_predictions = detector.predict(original_image)
@@ -160,7 +160,7 @@ artifact_predictions = detector.predict(artifact_image)
 
 # Calculate DDS
 matches = match_predictions(gt_predictions, artifact_predictions)
-ddscore = calculate_DDS(matches, len(gt_predictions), len(artifact_predictions))
+ddscore = calculate_dds(matches, len(gt_predictions), len(artifact_predictions))
 
 print(f"Detection Degradation Score: {ddscore}")
 ```
@@ -239,7 +239,7 @@ def detection_oriented_loss(enhanced_image, original_image, target_image):
     gt_preds = detector(target_image)
     enhanced_preds = detector(enhanced_image)
     matches = match_predictions(gt_preds, enhanced_preds)
-    dds_loss = calculate_DDS(matches, len(gt_preds), len(enhanced_preds))
+    dds_loss = calculate_dds(matches, len(gt_preds), len(enhanced_preds))
     
     # Combined loss
     total_loss = perceptual_loss + lambda_dds * dds_loss
