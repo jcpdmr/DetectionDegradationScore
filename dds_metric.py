@@ -1,5 +1,9 @@
 import torch
 from typing import List, Dict
+from torchvision import transforms
+from PIL import Image
+import torch
+from ultralytics import YOLO
 
 
 def format_yolo_predictions(yolo_predictions, is_ground_truth=False):
@@ -196,3 +200,43 @@ def calculate_dds(matches: List[Dict], num_gt: int, num_mod: int) -> float:
     # 0 = perfect match (all objects detected with perfect IoU and confidence)
     # 1 = complete mismatch (no valid matches found)
     return 1.0 - detection_quality_score
+
+def DDS(ref_img_path, degraded_img_path, device='cuda:0'):
+    """
+    Compute the Detection Degradation Score (DDS) between a reference and a degraded image.
+
+    The DDS measures the quality degradation in object detection performance between two images.
+    A score of 0.0 indicates perfect similarity (identical detections), while a score of 1.0 
+    indicates complete mismatch (no matching detections).
+
+    Args:
+        ref_img_path (str): File path to the reference image.
+        degraded_img_path (str): File path to the degraded (e.g., compressed, blurred) image.
+        device (str): Device to run inference on (e.g., 'cuda:0' or 'cpu').
+
+    Returns:
+        float: Detection Degradation Score (DDS) between 0.0 (best) and 1.0 (worst).
+    """
+
+    detector = YOLO("yolo11m.pt").to('cuda:0')
+    # Load and preprocess images
+    transform = transforms.Compose([transforms.ToTensor()])
+    img_ref = transform(Image.open(ref_img_path).convert("RGB")).unsqueeze(0).to(device)
+    img_deg = transform(Image.open(degraded_img_path).convert("RGB")).unsqueeze(0).to(device)
+
+    # Run inference
+    with torch.no_grad():
+        ref_preds = detector.predict(img_ref, verbose=False)
+        deg_preds = detector.predict(img_deg, verbose=False)
+
+    # Extract single image predictions
+    ref_result = ref_preds[0]
+    deg_result = deg_preds[0]
+
+    # Compute DDS
+    batch_results = match_predictions([ref_result], [deg_result])
+    dds_score = batch_results[0]['ddscore']
+
+    dds_score = dds_score.item() if isinstance(dds_score, torch.Tensor) else dds_score
+
+    return dds_score
